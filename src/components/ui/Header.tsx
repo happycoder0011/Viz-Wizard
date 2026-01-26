@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { useVisualizationStore } from '@/stores/visualizationStore';
 
 export function Header() {
-  const { repository, cityData, criticalPathEnabled, toggleCriticalPath } = useVisualizationStore();
+  const { repository, cityData, criticalPathEnabled, toggleCriticalPath, showDistrictView } = useVisualizationStore();
 
   const stats = repository?.stats;
   const repoName = repository ? `${repository.owner}/${repository.name}` : 'Loading...';
@@ -92,17 +92,53 @@ export function Header() {
           )}
         </div>
 
-        {/* Critical Path Button */}
-        <motion.button
-          onClick={toggleCriticalPath}
-          className={`glass rounded-xl px-4 py-3 flex items-center gap-3 transition-all ${
-            criticalPathEnabled
-              ? 'bg-gradient-to-r from-amber-500/20 to-red-500/20 border border-amber-500/40'
-              : 'hover:bg-white/10'
-          }`}
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-        >
+        {/* Action Buttons */}
+        <div className="flex items-center gap-3">
+          {/* District View Button */}
+          <motion.button
+            onClick={showDistrictView}
+            className="glass rounded-xl px-4 py-3 flex items-center gap-3 transition-all hover:bg-white/10"
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+          >
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-viz-cyan/20">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="text-viz-cyan"
+              >
+                <circle cx="12" cy="12" r="10" />
+                <circle cx="12" cy="12" r="6" />
+                <circle cx="12" cy="12" r="2" />
+              </svg>
+            </div>
+            <div className="text-left">
+              <div className="text-sm font-medium text-white/80">
+                District View
+              </div>
+              <div className="text-[10px] text-white/40">
+                See all clusters
+              </div>
+            </div>
+          </motion.button>
+
+          {/* Critical Path Button */}
+          <motion.button
+            onClick={toggleCriticalPath}
+            className={`glass rounded-xl px-4 py-3 flex items-center gap-3 transition-all ${
+              criticalPathEnabled
+                ? 'bg-gradient-to-r from-amber-500/20 to-red-500/20 border border-amber-500/40'
+                : 'hover:bg-white/10'
+            }`}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+          >
           <div
             className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
               criticalPathEnabled
@@ -138,6 +174,7 @@ export function Header() {
             <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
           )}
         </motion.button>
+        </div>
 
         {/* Controls hint */}
         <div className="glass rounded-xl p-3 text-xs text-white/50">

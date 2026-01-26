@@ -68,6 +68,9 @@ export function CodeEditor() {
     toggleChatPanel,
   } = useVisualizationStore();
 
+  // Debug logging
+  console.log('CodeEditor render - codeEditorOpen:', codeEditorOpen, 'fileId:', codeEditorFileId, 'chatPanelOpen:', chatPanelOpen);
+
   const [isMaximized, setIsMaximized] = useState(false);
   const [prevSize, setPrevSize] = useState(codeEditorSize);
   const [prevPosition, setPrevPosition] = useState(codeEditorPosition);
@@ -252,6 +255,9 @@ export function CodeEditor() {
 
             {/* Editor + Chat Split View */}
             <div className="flex-1 flex overflow-hidden">
+              {/* Debug: Show chatPanelOpen state */}
+              {console.log('chatPanelOpen:', chatPanelOpen)}
+
               {/* Monaco Editor */}
               <div className={`flex-1 overflow-hidden ${chatPanelOpen ? 'border-r border-white/10' : ''}`}>
               <Editor
@@ -321,12 +327,16 @@ export function CodeEditor() {
               </div>
 
               {/* Chat Panel */}
-              {chatPanelOpen && (
+              {chatPanelOpen ? (
                 <div
-                  className="flex-shrink-0 h-full overflow-hidden"
+                  className="flex-shrink-0 h-full overflow-hidden bg-[#1a1a2e]"
                   style={{ width: chatWidth }}
                 >
                   <ChatPanel fileName={file.name} filePath={file.path} />
+                </div>
+              ) : (
+                <div className="flex-shrink-0 h-full bg-red-500 text-white p-4" style={{ width: 100 }}>
+                  Chat is OFF
                 </div>
               )}
             </div>

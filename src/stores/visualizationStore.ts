@@ -127,6 +127,7 @@ interface VisualizationState {
   setZoomLevel: (level: ZoomLevel) => void;
   navigateTo: (item: BreadcrumbItem) => void;
   navigateToRoot: () => void;
+  showDistrictView: () => void;
   focusCluster: (clusterId: string | null) => void;
   toggleConnections: () => void;
   toggleLabels: () => void;
@@ -354,6 +355,18 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => ({
     },
     isAnimatingCamera: true,
     selectedBuildingId: null,
+  }),
+
+  showDistrictView: () => set({
+    breadcrumbs: [],
+    focusedClusterId: null,
+    cameraTarget: {
+      position: [0, 60, 0.1], // Top-down view from above
+      lookAt: [0, 0, 0],
+    },
+    isAnimatingCamera: true,
+    selectedBuildingId: null,
+    currentZoomLevel: 'satellite',
   }),
 
   focusCluster: (clusterId) => set({ focusedClusterId: clusterId }),

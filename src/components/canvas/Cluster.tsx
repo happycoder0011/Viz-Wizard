@@ -47,21 +47,19 @@ export function Cluster({ data, zoomLevel }: ClusterProps) {
     };
   }, [data.color]);
 
-  // Animate hover and pulse
-  useFrame((state) => {
+  // Animate hover (no pulsating)
+  useFrame(() => {
     if (!meshRef.current) return;
 
-    // Subtle pulse animation
-    const pulse = Math.sin(state.clock.elapsedTime * 2) * 0.05 + 1;
-    const targetScale = isHovered ? 1.1 : (isFocused ? 1.05 : 1);
+    // Smooth scale transition on hover/focus only
+    const targetScale = isHovered ? 1.08 : (isFocused ? 1.04 : 1);
     const currentScale = meshRef.current.scale.x;
-    const newScale = THREE.MathUtils.lerp(currentScale, targetScale * pulse, 0.1);
+    const newScale = THREE.MathUtils.lerp(currentScale, targetScale, 0.1);
     meshRef.current.scale.setScalar(newScale);
 
-    // Glow pulse
+    // Static glow size
     if (glowRef.current) {
-      const glowScale = 1.3 + Math.sin(state.clock.elapsedTime * 1.5) * 0.1;
-      glowRef.current.scale.setScalar(data.radius * glowScale);
+      glowRef.current.scale.setScalar(data.radius * 1.3);
     }
   });
 
