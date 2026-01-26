@@ -201,10 +201,7 @@ export function SelectedBuildingPanel() {
                 {/* Action buttons */}
                 <div className="flex gap-2 pt-2 border-t border-white/10">
                   <button
-                    onClick={() => {
-                      console.log('View Code clicked, fileId:', selectedBuilding.fileId);
-                      openCodeEditor(selectedBuilding.fileId);
-                    }}
+                    onClick={() => openCodeEditor(selectedBuilding.fileId)}
                     className="flex-1 px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-white/70 hover:text-white transition-colors flex items-center justify-center gap-2"
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

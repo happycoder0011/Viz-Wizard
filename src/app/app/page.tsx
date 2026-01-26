@@ -29,21 +29,11 @@ const Scene = dynamic(
 
 // Dynamically import CodeEditor to avoid SSR issues with monaco-editor and react-rnd
 const CodeEditor = dynamic(
-  () => import('@/components/ui/CodeEditor').then((mod) => {
-    console.log('CodeEditor module loaded!');
-    return mod.CodeEditor;
-  }),
-  {
-    ssr: false,
-    loading: () => {
-      console.log('CodeEditor is loading...');
-      return null;
-    }
-  }
+  () => import('@/components/ui/CodeEditor').then((mod) => mod.CodeEditor),
+  { ssr: false }
 );
 
 export default function Home() {
-  console.log('App page rendering');
   return (
     <main className="fixed inset-0 bg-viz-bg overflow-hidden">
       {/* 3D Canvas - fills entire viewport */}
