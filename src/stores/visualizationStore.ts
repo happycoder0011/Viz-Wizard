@@ -70,6 +70,24 @@ interface VisualizationState {
   selectedConnectionId: string | null;
   selectedConnection: RoadData | null;
 
+  // Find Usages State
+  findUsagesOpen: boolean;
+  findUsagesFileId: string | null;
+  findUsagesResults: Array<{
+    fileId: string;
+    fileName: string;
+    filePath: string;
+    category: string;
+    connectionType: ConnectionType;
+    direction: 'incoming' | 'outgoing'; // incoming = files that use this, outgoing = files this uses
+    metadata?: {
+      functionName?: string;
+      variableName?: string;
+      lineNumber?: number;
+    };
+  }>;
+  highlightedFileIds: Set<string>; // Files to highlight in 3D view
+
   // Actions
   setRepository: (repo: RepositoryData) => void;
   setCityData: (city: CityData) => void;
@@ -104,6 +122,13 @@ interface VisualizationState {
   // Connection Interaction Actions
   hoverConnection: (id: string | null, road: RoadData | null) => void;
   selectConnection: (id: string | null, road: RoadData | null) => void;
+
+  // Find Usages Actions
+  openFindUsages: (fileId: string) => void;
+  closeFindUsages: () => void;
+  highlightFiles: (fileIds: string[]) => void;
+  clearHighlights: () => void;
+  focusOnUsageFile: (fileId: string) => void;
 }
 
 // Helper to determine zoom level from camera distance
@@ -163,6 +188,12 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => ({
   hoveredConnection: null,
   selectedConnectionId: null,
   selectedConnection: null,
+
+  // Find Usages State
+  findUsagesOpen: false,
+  findUsagesFileId: null,
+  findUsagesResults: [],
+  highlightedFileIds: new Set(),
 
   // Actions
   setRepository: (repo) => set({ repository: repo }),
@@ -383,4 +414,108 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => ({
     selectedConnectionId: id,
     selectedConnection: road,
   }),
+
+  // Find Usages Actions
+  openFindUsages: (fileId: string) => {
+    const { repository, cityData } = get();
+    if (!repository || !cityData) return;
+
+    // Find all connections where this file is involved
+    const results: VisualizationState['findUsagesResults'] = [];
+    const highlightedIds: string[] = [fileId]; // Include the source file
+
+    // Get connections from the repository
+    const connections = repository.connections || [];
+
+    for (const conn of connections) {
+      // Skip directory connections - they're not "usages"
+      if (conn.type === 'directory') continue;
+
+      if (conn.sourceId === fileId) {
+        // Outgoing: this file uses other files
+        const targetFile = repository.allFiles.find(f => f.id === conn.targetId);
+        if (targetFile) {
+          results.push({
+            fileId: conn.targetId,
+            fileName: targetFile.name,
+            filePath: targetFile.path,
+            category: targetFile.category,
+            connectionType: conn.type,
+            direction: 'outgoing',
+            metadata: conn.metadata,
+          });
+          highlightedIds.push(conn.targetId);
+        }
+      } else if (conn.targetId === fileId) {
+        // Incoming: other files use this file
+        const sourceFile = repository.allFiles.find(f => f.id === conn.sourceId);
+        if (sourceFile) {
+          results.push({
+            fileId: conn.sourceId,
+            fileName: sourceFile.name,
+            filePath: sourceFile.path,
+            category: sourceFile.category,
+            connectionType: conn.type,
+            direction: 'incoming',
+            metadata: conn.metadata,
+          });
+          highlightedIds.push(conn.sourceId);
+        }
+      }
+    }
+
+    // Sort results: incoming first, then by connection type
+    results.sort((a, b) => {
+      if (a.direction !== b.direction) {
+        return a.direction === 'incoming' ? -1 : 1;
+      }
+      return a.connectionType.localeCompare(b.connectionType);
+    });
+
+    set({
+      findUsagesOpen: true,
+      findUsagesFileId: fileId,
+      findUsagesResults: results,
+      highlightedFileIds: new Set(highlightedIds),
+    });
+  },
+
+  closeFindUsages: () => set({
+    findUsagesOpen: false,
+    findUsagesFileId: null,
+    findUsagesResults: [],
+    highlightedFileIds: new Set(),
+  }),
+
+  highlightFiles: (fileIds: string[]) => set({
+    highlightedFileIds: new Set(fileIds),
+  }),
+
+  clearHighlights: () => set({
+    highlightedFileIds: new Set(),
+  }),
+
+  focusOnUsageFile: (fileId: string) => {
+    const { cityData } = get();
+    if (!cityData) return;
+
+    // Find the building for this file
+    for (const district of cityData.districts) {
+      const building = district.buildings.find(b => b.fileId === fileId);
+      if (building) {
+        const [x, y, z] = building.position;
+        const height = building.dimensions[1];
+
+        set({
+          selectedBuildingId: building.id,
+          cameraTarget: {
+            position: [x + 10, height + 8, z + 10],
+            lookAt: [x, height / 2, z],
+          },
+          isAnimatingCamera: true,
+        });
+        return;
+      }
+    }
+  },
 }));

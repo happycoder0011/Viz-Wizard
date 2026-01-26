@@ -11,6 +11,7 @@ import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
 import { ZoomIndicator } from '@/components/ui/ZoomIndicator';
 import { ConnectionTooltip } from '@/components/ui/ConnectionTooltip';
 import { ConnectionDetailsPanel } from '@/components/ui/ConnectionDetailsPanel';
+import { FindUsagesPanel } from '@/components/ui/FindUsagesPanel';
 
 // Dynamically import the 3D scene to avoid SSR issues
 const Scene = dynamic(
@@ -51,6 +52,7 @@ export default function Home() {
       <CodeEditor />
       <ConnectionTooltip />
       <ConnectionDetailsPanel />
+      <FindUsagesPanel />
     </main>
   );
 }

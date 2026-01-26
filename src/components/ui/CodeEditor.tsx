@@ -107,6 +107,17 @@ export function CodeEditor() {
 
   return (
     <AnimatePresence>
+      {/* Backdrop overlay - dims everything and blocks interactions */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.2 }}
+        className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm"
+        onClick={closeCodeEditor}
+      />
+
+      {/* Code Editor Panel */}
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -292,3 +303,6 @@ export function CodeEditor() {
     </AnimatePresence>
   );
 }
+
+// Export for dynamic import
+export default CodeEditor;

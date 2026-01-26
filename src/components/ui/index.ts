@@ -7,3 +7,4 @@ export { Legend } from './Legend';
 export { CodeEditor } from './CodeEditor';
 export { ConnectionTooltip } from './ConnectionTooltip';
 export { ConnectionDetailsPanel } from './ConnectionDetailsPanel';
+export { FindUsagesPanel } from './FindUsagesPanel';

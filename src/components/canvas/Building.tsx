@@ -22,13 +22,20 @@ export function Building({ data }: BuildingProps) {
     hoverBuilding,
   } = useVisualizationStore();
 
+  // Get these separately to avoid potential issues
+  const highlightedFileIds = useVisualizationStore(state => state.highlightedFileIds);
+  const findUsagesOpen = useVisualizationStore(state => state.findUsagesOpen);
+
   const isSelected = selectedBuildingId === data.id;
   const isOtherHovered = hoveredBuildingId !== null && hoveredBuildingId !== data.id;
+  const isHighlighted = highlightedFileIds instanceof Set ? highlightedFileIds.has(data.fileId) : false;
+  const isInFindUsagesMode = findUsagesOpen === true;
 
   // Create materials
   const materials = useMemo(() => {
     const baseColor = new THREE.Color(data.color);
     const emissiveColor = new THREE.Color(data.emissiveColor);
+    const highlightColor = new THREE.Color('#00ff88'); // Green highlight for find usages
 
     return {
       standard: new THREE.MeshStandardMaterial({
@@ -52,26 +59,52 @@ export function Building({ data }: BuildingProps) {
         metalness: 0.1,
         roughness: 0.2,
       }),
+      highlighted: new THREE.MeshStandardMaterial({
+        color: baseColor.clone().lerp(highlightColor, 0.3),
+        emissive: highlightColor,
+        emissiveIntensity: 1.5,
+        metalness: 0.2,
+        roughness: 0.3,
+      }),
+      dimmed: new THREE.MeshStandardMaterial({
+        color: baseColor.clone().multiplyScalar(0.3),
+        emissive: emissiveColor.clone().multiplyScalar(0.2),
+        emissiveIntensity: data.emissiveIntensity * 0.2,
+        metalness: 0.3,
+        roughness: 0.6,
+        transparent: true,
+        opacity: 0.6,
+      }),
     };
   }, [data.color, data.emissiveColor, data.emissiveIntensity]);
 
-  // Animate on hover/selection
+  // Animate on hover/selection/highlighting
   useFrame((state, delta) => {
     if (!meshRef.current) return;
 
     // Target scale
     let targetScale = 1;
-    if (isSelected) targetScale = 1.1;
-    else if (isHovered) targetScale = 1.05;
-    else if (isOtherHovered) targetScale = 0.95;
+    if (isInFindUsagesMode) {
+      // In find usages mode
+      if (isHighlighted) {
+        targetScale = isHovered ? 1.15 : 1.08;
+      } else {
+        targetScale = 0.9; // Dim non-highlighted buildings
+      }
+    } else {
+      // Normal mode
+      if (isSelected) targetScale = 1.1;
+      else if (isHovered) targetScale = 1.05;
+      else if (isOtherHovered) targetScale = 0.95;
+    }
 
     // Smooth scale transition
     const currentScale = meshRef.current.scale.x;
     const newScale = THREE.MathUtils.lerp(currentScale, targetScale, delta * 8);
     meshRef.current.scale.setScalar(newScale);
 
-    // Subtle floating animation for selected building
-    if (isSelected) {
+    // Subtle floating animation for selected building or highlighted buildings
+    if (isSelected || (isInFindUsagesMode && isHighlighted)) {
       const floatOffset = Math.sin(state.clock.elapsedTime * 2) * 0.1;
       meshRef.current.position.y = data.position[1] + floatOffset;
     } else {
@@ -83,12 +116,21 @@ export function Building({ data }: BuildingProps) {
     }
   });
 
-  // Get current material
-  const material = isSelected
-    ? materials.selected
-    : isHovered
-    ? materials.hovered
-    : materials.standard;
+  // Get current material - prioritize find usages highlighting
+  const material = useMemo(() => {
+    if (isInFindUsagesMode) {
+      // In find usages mode, highlight related files and dim others
+      if (isHighlighted) {
+        return isHovered ? materials.selected : materials.highlighted;
+      } else {
+        return materials.dimmed;
+      }
+    }
+    // Normal mode
+    if (isSelected) return materials.selected;
+    if (isHovered) return materials.hovered;
+    return materials.standard;
+  }, [isInFindUsagesMode, isHighlighted, isSelected, isHovered, materials]);
 
   // Event handlers
   const handlePointerOver = (e: any) => {
@@ -131,9 +173,13 @@ export function Building({ data }: BuildingProps) {
       >
         <planeGeometry args={[data.dimensions[0] + 0.5, data.dimensions[2] + 0.5]} />
         <meshBasicMaterial
-          color={data.emissiveColor}
+          color={isInFindUsagesMode && isHighlighted ? '#00ff88' : data.emissiveColor}
           transparent
-          opacity={isSelected ? 0.4 : isHovered ? 0.25 : 0.1}
+          opacity={
+            isInFindUsagesMode
+              ? isHighlighted ? 0.5 : 0.05
+              : isSelected ? 0.4 : isHovered ? 0.25 : 0.1
+          }
         />
       </mesh>
     </group>
