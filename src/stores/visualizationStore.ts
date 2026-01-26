@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { RepositoryData, CityData, BuildingData, ZoomLevel, BreadcrumbItem, ZOOM_LEVELS, ConnectionType, RoadData } from '@/types/repository';
 import { FixtureType, getFixture } from '@/lib/mockData/fixtures';
 import { repositoryToCityData, generateMockRepository } from '@/lib/mockData';
+import { CriticalPathScore, calculateCriticalPath } from '@/lib/criticalPath';
 
 interface CameraTarget {
   position: [number, number, number];
@@ -88,6 +89,31 @@ interface VisualizationState {
   }>;
   highlightedFileIds: Set<string>; // Files to highlight in 3D view
 
+  // Critical Path Radar State
+  criticalPathEnabled: boolean;
+  criticalFiles: CriticalPathScore[];
+  criticalFileIds: Set<string>; // For quick lookup in Building component
+
+  // Code Copilot Chat State
+  chatMessages: Array<{
+    id: string;
+    role: 'user' | 'assistant' | 'system';
+    content: string;
+    timestamp: number;
+    codeContext?: {
+      fileName: string;
+      selectedCode?: string;
+      lineRange?: [number, number];
+    };
+  }>;
+  chatLoading: boolean;
+  chatError: string | null;
+  chatApiKey: string | null;
+  chatModel: 'claude' | 'gpt-4';
+  chatPanelOpen: boolean;
+  selectedCode: string | null;
+  selectedCodeRange: [number, number] | null;
+
   // Actions
   setRepository: (repo: RepositoryData) => void;
   setCityData: (city: CityData) => void;
@@ -129,6 +155,22 @@ interface VisualizationState {
   highlightFiles: (fileIds: string[]) => void;
   clearHighlights: () => void;
   focusOnUsageFile: (fileId: string) => void;
+
+  // Critical Path Radar Actions
+  toggleCriticalPath: () => void;
+  calculateCriticalPathScores: () => void;
+  focusOnCriticalFile: (fileId: string) => void;
+
+  // Code Copilot Chat Actions
+  toggleChatPanel: () => void;
+  sendChatMessage: (content: string) => Promise<void>;
+  clearChatMessages: () => void;
+  setChatApiKey: (key: string | null) => void;
+  setChatModel: (model: 'claude' | 'gpt-4') => void;
+  setSelectedCode: (code: string | null, range?: [number, number]) => void;
+  addChatMessage: (message: { role: 'user' | 'assistant'; content: string; codeContext?: { fileName: string; selectedCode?: string } }) => void;
+  setChatLoading: (loading: boolean) => void;
+  setChatError: (error: string | null) => void;
 }
 
 // Helper to determine zoom level from camera distance
@@ -171,7 +213,7 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => ({
   codeEditorOpen: false,
   codeEditorFileId: null,
   codeEditorPosition: { x: 100, y: 80 },
-  codeEditorSize: { width: 500, height: 600 },
+  codeEditorSize: { width: 900, height: 650 },
 
   // Connection Filters
   connectionFilters: {
@@ -194,6 +236,21 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => ({
   findUsagesFileId: null,
   findUsagesResults: [],
   highlightedFileIds: new Set(),
+
+  // Critical Path Radar State
+  criticalPathEnabled: false,
+  criticalFiles: [],
+  criticalFileIds: new Set(),
+
+  // Code Copilot Chat State
+  chatMessages: [],
+  chatLoading: false,
+  chatError: null,
+  chatApiKey: typeof window !== 'undefined' ? localStorage.getItem('viz-wizard-api-key') : null,
+  chatModel: 'claude',
+  chatPanelOpen: true, // Default open when code editor is open
+  selectedCode: null,
+  selectedCodeRange: null,
 
   // Actions
   setRepository: (repo) => set({ repository: repo }),
@@ -518,4 +575,267 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => ({
       }
     }
   },
+
+  // Critical Path Radar Actions
+  toggleCriticalPath: () => {
+    const { criticalPathEnabled, criticalFiles, repository } = get();
+
+    if (!criticalPathEnabled) {
+      // Turning ON - calculate scores if not already done
+      if (criticalFiles.length === 0 && repository) {
+        const scores = calculateCriticalPath(
+          repository.allFiles,
+          repository.connections,
+          10 // Top 10 critical files
+        );
+        const criticalIds = new Set(scores.map(s => s.fileId));
+        set({
+          criticalPathEnabled: true,
+          criticalFiles: scores,
+          criticalFileIds: criticalIds,
+          // Close other panels that might conflict
+          findUsagesOpen: false,
+          findUsagesResults: [],
+          highlightedFileIds: new Set(),
+        });
+      } else {
+        set({
+          criticalPathEnabled: true,
+          findUsagesOpen: false,
+          findUsagesResults: [],
+          highlightedFileIds: new Set(),
+        });
+      }
+    } else {
+      // Turning OFF
+      set({
+        criticalPathEnabled: false,
+      });
+    }
+  },
+
+  calculateCriticalPathScores: () => {
+    const { repository } = get();
+    if (!repository) return;
+
+    const scores = calculateCriticalPath(
+      repository.allFiles,
+      repository.connections,
+      10 // Top 10 critical files
+    );
+    const criticalIds = new Set(scores.map(s => s.fileId));
+
+    set({
+      criticalFiles: scores,
+      criticalFileIds: criticalIds,
+    });
+  },
+
+  focusOnCriticalFile: (fileId: string) => {
+    const { cityData } = get();
+    if (!cityData) return;
+
+    // Find the building for this file
+    for (const district of cityData.districts) {
+      const building = district.buildings.find(b => b.fileId === fileId);
+      if (building) {
+        const [x, y, z] = building.position;
+        const height = building.dimensions[1];
+
+        set({
+          selectedBuildingId: building.id,
+          cameraTarget: {
+            position: [x + 10, height + 8, z + 10],
+            lookAt: [x, height / 2, z],
+          },
+          isAnimatingCamera: true,
+        });
+        return;
+      }
+    }
+  },
+
+  // Code Copilot Chat Actions
+  toggleChatPanel: () => set((state) => ({ chatPanelOpen: !state.chatPanelOpen })),
+
+  sendChatMessage: async (content: string) => {
+    const { chatApiKey, chatModel, codeEditorFileId, repository, selectedCode, chatMessages } = get();
+
+    if (!chatApiKey) {
+      set({ chatError: 'Please set your API key in settings' });
+      return;
+    }
+
+    // Find the current file
+    const currentFile = repository?.allFiles.find(f => f.id === codeEditorFileId);
+    if (!currentFile) {
+      set({ chatError: 'No file selected' });
+      return;
+    }
+
+    // Add user message
+    const userMessage = {
+      id: `msg-${Date.now()}`,
+      role: 'user' as const,
+      content,
+      timestamp: Date.now(),
+      codeContext: selectedCode ? {
+        fileName: currentFile.name,
+        selectedCode,
+      } : undefined,
+    };
+
+    set({
+      chatMessages: [...chatMessages, userMessage],
+      chatLoading: true,
+      chatError: null,
+    });
+
+    try {
+      // Build the system prompt
+      const systemPrompt = `You are a code assistant embedded in Viz-Wizard, a codebase visualization tool.
+
+You are currently viewing: ${currentFile.name}
+Language: ${currentFile.language || 'typescript'}
+File path: ${currentFile.path}
+
+The user may ask you to:
+- Explain what code does
+- Identify potential bugs or issues
+- Suggest improvements
+- Explain how this code connects to other parts of the codebase
+
+Be concise but thorough. Use code examples when helpful.
+${selectedCode ? `The user has selected this code:\n\`\`\`\n${selectedCode}\n\`\`\`` : ''}
+
+Current file content:
+\`\`\`${currentFile.language || 'typescript'}
+${currentFile.content || '// Content not available'}
+\`\`\``;
+
+      // Call the appropriate API
+      let assistantContent: string;
+
+      if (chatModel === 'claude') {
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': chatApiKey,
+            'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true',
+          },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-20250514',
+            max_tokens: 1024,
+            system: systemPrompt,
+            messages: [
+              ...chatMessages.filter(m => m.role !== 'system').map(m => ({
+                role: m.role,
+                content: m.content,
+              })),
+              { role: 'user', content },
+            ],
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error?.message || `API error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        assistantContent = data.content[0]?.text || 'No response received';
+      } else {
+        // OpenAI API
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${chatApiKey}`,
+          },
+          body: JSON.stringify({
+            model: 'gpt-4-turbo-preview',
+            messages: [
+              { role: 'system', content: systemPrompt },
+              ...chatMessages.filter(m => m.role !== 'system').map(m => ({
+                role: m.role,
+                content: m.content,
+              })),
+              { role: 'user', content },
+            ],
+            max_tokens: 1024,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error?.message || `API error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        assistantContent = data.choices[0]?.message?.content || 'No response received';
+      }
+
+      // Add assistant message
+      const assistantMessage = {
+        id: `msg-${Date.now()}`,
+        role: 'assistant' as const,
+        content: assistantContent,
+        timestamp: Date.now(),
+      };
+
+      set((state) => ({
+        chatMessages: [...state.chatMessages, assistantMessage],
+        chatLoading: false,
+      }));
+    } catch (error) {
+      set({
+        chatError: error instanceof Error ? error.message : 'Failed to send message',
+        chatLoading: false,
+      });
+    }
+  },
+
+  clearChatMessages: () => set({ chatMessages: [], chatError: null }),
+
+  setChatApiKey: (key: string | null) => {
+    if (typeof window !== 'undefined') {
+      if (key) {
+        localStorage.setItem('viz-wizard-api-key', key);
+      } else {
+        localStorage.removeItem('viz-wizard-api-key');
+      }
+    }
+    set({ chatApiKey: key, chatError: null });
+  },
+
+  setChatModel: (model: 'claude' | 'gpt-4') => set({ chatModel: model }),
+
+  setSelectedCode: (code: string | null, range?: [number, number]) => set({
+    selectedCode: code,
+    selectedCodeRange: range || null,
+  }),
+
+  addChatMessage: (message) => {
+    const { chatMessages, codeEditorFileId, repository } = get();
+    const currentFile = repository?.allFiles.find(f => f.id === codeEditorFileId);
+
+    set({
+      chatMessages: [
+        ...chatMessages,
+        {
+          id: `msg-${Date.now()}`,
+          role: message.role,
+          content: message.content,
+          timestamp: Date.now(),
+          codeContext: message.codeContext || (currentFile ? { fileName: currentFile.name } : undefined),
+        },
+      ],
+    });
+  },
+
+  setChatLoading: (loading: boolean) => set({ chatLoading: loading }),
+
+  setChatError: (error: string | null) => set({ chatError: error }),
 }));

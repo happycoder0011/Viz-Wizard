@@ -12,6 +12,7 @@ import { ZoomIndicator } from '@/components/ui/ZoomIndicator';
 import { ConnectionTooltip } from '@/components/ui/ConnectionTooltip';
 import { ConnectionDetailsPanel } from '@/components/ui/ConnectionDetailsPanel';
 import { FindUsagesPanel } from '@/components/ui/FindUsagesPanel';
+import { CriticalPathPanel } from '@/components/ui/CriticalPathPanel';
 
 // Dynamically import the 3D scene to avoid SSR issues
 const Scene = dynamic(
@@ -53,6 +54,7 @@ export default function Home() {
       <ConnectionTooltip />
       <ConnectionDetailsPanel />
       <FindUsagesPanel />
+      <CriticalPathPanel />
     </main>
   );
 }

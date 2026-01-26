@@ -1,12 +1,14 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Rnd } from 'react-rnd';
 import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useVisualizationStore } from '@/stores/visualizationStore';
 import { CATEGORY_COLORS } from '@/lib/mockData';
 import { FileCategory } from '@/types/repository';
+import { ChatPanel } from './ChatPanel';
+import type { editor } from 'monaco-editor';
 
 // Dynamically import Monaco Editor to avoid SSR issues
 const Editor = dynamic(
@@ -61,11 +63,16 @@ export function CodeEditor() {
     closeCodeEditor,
     setCodeEditorPosition,
     setCodeEditorSize,
+    chatPanelOpen,
+    setSelectedCode,
+    toggleChatPanel,
   } = useVisualizationStore();
 
   const [isMaximized, setIsMaximized] = useState(false);
   const [prevSize, setPrevSize] = useState(codeEditorSize);
   const [prevPosition, setPrevPosition] = useState(codeEditorPosition);
+  const [chatWidth] = useState(320);
+  const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
 
   // Find the file data
   const file = repository?.allFiles.find(f => f.id === codeEditorFileId);
@@ -92,9 +99,11 @@ export function CodeEditor() {
   useEffect(() => {
     if (codeEditorOpen) {
       setIsMaximized(false);
-      // Set initial position to right side of screen on first open
+      // Center the editor on screen on first open
       if (codeEditorPosition.x === 100 && typeof window !== 'undefined') {
-        setCodeEditorPosition({ x: window.innerWidth - 520, y: 80 });
+        const editorWidth = 900; // Match the default width in store
+        const x = Math.max(20, (window.innerWidth - editorWidth) / 2);
+        setCodeEditorPosition({ x, y: 60 });
       }
     }
   }, [codeEditorOpen, codeEditorPosition.x, setCodeEditorPosition]);
@@ -138,8 +147,8 @@ export function CodeEditor() {
             });
             setCodeEditorPosition(position);
           }}
-          minWidth={350}
-          minHeight={250}
+          minWidth={chatPanelOpen ? 700 : 350}
+          minHeight={300}
           bounds="window"
           dragHandleClassName="code-editor-drag-handle"
           className="pointer-events-auto"
@@ -181,6 +190,23 @@ export function CodeEditor() {
 
               {/* Window controls */}
               <div className="flex items-center gap-1 flex-shrink-0">
+                {/* Chat Toggle */}
+                <button
+                  onClick={toggleChatPanel}
+                  className={`p-1.5 rounded transition-colors group ${
+                    chatPanelOpen
+                      ? 'bg-cyan-500/20 text-cyan-400'
+                      : 'hover:bg-white/10 text-white/40 hover:text-white/70'
+                  }`}
+                  title={chatPanelOpen ? 'Close Chat' : 'Open AI Chat'}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={chatPanelOpen ? 'text-cyan-400' : ''}>
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                  </svg>
+                </button>
+
+                <div className="w-px h-4 bg-white/10 mx-1" />
+
                 {/* Minimize */}
                 <button
                   onClick={closeCodeEditor}
@@ -224,8 +250,10 @@ export function CodeEditor() {
               </div>
             </div>
 
-            {/* Monaco Editor */}
-            <div className="flex-1 overflow-hidden">
+            {/* Editor + Chat Split View */}
+            <div className="flex-1 flex overflow-hidden">
+              {/* Monaco Editor */}
+              <div className={`flex-1 overflow-hidden ${chatPanelOpen ? 'border-r border-white/10' : ''}`}>
               <Editor
                 height="100%"
                 language={language}
@@ -274,8 +302,33 @@ export function CodeEditor() {
                 }}
                 onMount={(editor, monaco) => {
                   monaco.editor.setTheme('viz-dark');
+                  editorRef.current = editor;
+
+                  // Track selection changes
+                  editor.onDidChangeCursorSelection((e) => {
+                    const selection = editor.getSelection();
+                    if (selection && !selection.isEmpty()) {
+                      const selectedText = editor.getModel()?.getValueInRange(selection);
+                      if (selectedText) {
+                        setSelectedCode(selectedText);
+                      }
+                    } else {
+                      setSelectedCode(null);
+                    }
+                  });
                 }}
               />
+              </div>
+
+              {/* Chat Panel */}
+              {chatPanelOpen && (
+                <div
+                  className="flex-shrink-0 h-full overflow-hidden"
+                  style={{ width: chatWidth }}
+                >
+                  <ChatPanel fileName={file.name} filePath={file.path} />
+                </div>
+              )}
             </div>
 
             {/* Footer with file stats */}

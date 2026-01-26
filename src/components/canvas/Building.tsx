@@ -22,20 +22,32 @@ export function Building({ data }: BuildingProps) {
     hoverBuilding,
   } = useVisualizationStore();
 
-  // Get these separately to avoid potential issues
+  // Get these separately to avoid potential issues with Set access
   const highlightedFileIds = useVisualizationStore(state => state.highlightedFileIds);
   const findUsagesOpen = useVisualizationStore(state => state.findUsagesOpen);
+  const criticalPathEnabled = useVisualizationStore(state => state.criticalPathEnabled);
+  const criticalFileIds = useVisualizationStore(state => state.criticalFileIds);
+  const criticalFiles = useVisualizationStore(state => state.criticalFiles);
 
   const isSelected = selectedBuildingId === data.id;
   const isOtherHovered = hoveredBuildingId !== null && hoveredBuildingId !== data.id;
   const isHighlighted = highlightedFileIds instanceof Set ? highlightedFileIds.has(data.fileId) : false;
   const isInFindUsagesMode = findUsagesOpen === true;
+  const isCritical = criticalFileIds instanceof Set ? criticalFileIds.has(data.fileId) : false;
+  const isInCriticalPathMode = criticalPathEnabled === true;
+
+  // Get risk score for this file if in critical path mode
+  const riskScore = isInCriticalPathMode && isCritical
+    ? criticalFiles.find(f => f.fileId === data.fileId)?.overallRisk ?? 0
+    : 0;
 
   // Create materials
   const materials = useMemo(() => {
     const baseColor = new THREE.Color(data.color);
     const emissiveColor = new THREE.Color(data.emissiveColor);
     const highlightColor = new THREE.Color('#00ff88'); // Green highlight for find usages
+    const goldColor = new THREE.Color('#ffd700'); // Gold for critical path
+    const criticalColor = new THREE.Color('#ff4444'); // Red for very critical
 
     return {
       standard: new THREE.MeshStandardMaterial({
@@ -75,6 +87,37 @@ export function Building({ data }: BuildingProps) {
         transparent: true,
         opacity: 0.6,
       }),
+      // Critical path materials
+      critical: new THREE.MeshStandardMaterial({
+        color: goldColor,
+        emissive: goldColor,
+        emissiveIntensity: 2.0,
+        metalness: 0.6,
+        roughness: 0.2,
+      }),
+      criticalHovered: new THREE.MeshStandardMaterial({
+        color: goldColor.clone().multiplyScalar(1.2),
+        emissive: goldColor,
+        emissiveIntensity: 3.0,
+        metalness: 0.5,
+        roughness: 0.15,
+      }),
+      criticalHigh: new THREE.MeshStandardMaterial({
+        color: criticalColor.clone().lerp(goldColor, 0.5),
+        emissive: criticalColor,
+        emissiveIntensity: 2.5,
+        metalness: 0.5,
+        roughness: 0.2,
+      }),
+      grayscale: new THREE.MeshStandardMaterial({
+        color: new THREE.Color(0.2, 0.2, 0.22),
+        emissive: new THREE.Color(0.05, 0.05, 0.06),
+        emissiveIntensity: 0.3,
+        metalness: 0.2,
+        roughness: 0.7,
+        transparent: true,
+        opacity: 0.5,
+      }),
     };
   }, [data.color, data.emissiveColor, data.emissiveIntensity]);
 
@@ -84,7 +127,14 @@ export function Building({ data }: BuildingProps) {
 
     // Target scale
     let targetScale = 1;
-    if (isInFindUsagesMode) {
+    if (isInCriticalPathMode) {
+      // In critical path mode
+      if (isCritical) {
+        targetScale = isHovered ? 1.2 : 1.1;
+      } else {
+        targetScale = 0.85; // Shrink non-critical buildings
+      }
+    } else if (isInFindUsagesMode) {
       // In find usages mode
       if (isHighlighted) {
         targetScale = isHovered ? 1.15 : 1.08;
@@ -103,9 +153,16 @@ export function Building({ data }: BuildingProps) {
     const newScale = THREE.MathUtils.lerp(currentScale, targetScale, delta * 8);
     meshRef.current.scale.setScalar(newScale);
 
-    // Subtle floating animation for selected building or highlighted buildings
-    if (isSelected || (isInFindUsagesMode && isHighlighted)) {
-      const floatOffset = Math.sin(state.clock.elapsedTime * 2) * 0.1;
+    // Floating animation for critical/selected/highlighted buildings
+    const shouldFloat = isSelected ||
+      (isInFindUsagesMode && isHighlighted) ||
+      (isInCriticalPathMode && isCritical);
+
+    if (shouldFloat) {
+      // More dramatic float for critical buildings
+      const floatIntensity = isInCriticalPathMode && isCritical ? 0.15 : 0.1;
+      const floatSpeed = isInCriticalPathMode && isCritical ? 2.5 : 2;
+      const floatOffset = Math.sin(state.clock.elapsedTime * floatSpeed) * floatIntensity;
       meshRef.current.position.y = data.position[1] + floatOffset;
     } else {
       meshRef.current.position.y = THREE.MathUtils.lerp(
@@ -116,8 +173,18 @@ export function Building({ data }: BuildingProps) {
     }
   });
 
-  // Get current material - prioritize find usages highlighting
+  // Get current material - prioritize special modes
   const material = useMemo(() => {
+    if (isInCriticalPathMode) {
+      // In critical path mode, show gold for critical files, grayscale for others
+      if (isCritical) {
+        if (isHovered) return materials.criticalHovered;
+        if (riskScore >= 70) return materials.criticalHigh;
+        return materials.critical;
+      } else {
+        return materials.grayscale;
+      }
+    }
     if (isInFindUsagesMode) {
       // In find usages mode, highlight related files and dim others
       if (isHighlighted) {
@@ -130,7 +197,7 @@ export function Building({ data }: BuildingProps) {
     if (isSelected) return materials.selected;
     if (isHovered) return materials.hovered;
     return materials.standard;
-  }, [isInFindUsagesMode, isHighlighted, isSelected, isHovered, materials]);
+  }, [isInCriticalPathMode, isCritical, riskScore, isInFindUsagesMode, isHighlighted, isSelected, isHovered, materials]);
 
   // Event handlers
   const handlePointerOver = (e: any) => {
@@ -173,10 +240,18 @@ export function Building({ data }: BuildingProps) {
       >
         <planeGeometry args={[data.dimensions[0] + 0.5, data.dimensions[2] + 0.5]} />
         <meshBasicMaterial
-          color={isInFindUsagesMode && isHighlighted ? '#00ff88' : data.emissiveColor}
+          color={
+            isInCriticalPathMode && isCritical
+              ? (riskScore >= 70 ? '#ff4444' : '#ffd700')
+              : isInFindUsagesMode && isHighlighted
+              ? '#00ff88'
+              : data.emissiveColor
+          }
           transparent
           opacity={
-            isInFindUsagesMode
+            isInCriticalPathMode
+              ? isCritical ? 0.6 : 0.03
+              : isInFindUsagesMode
               ? isHighlighted ? 0.5 : 0.05
               : isSelected ? 0.4 : isHovered ? 0.25 : 0.1
           }

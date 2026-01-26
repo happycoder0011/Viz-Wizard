@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { useVisualizationStore } from '@/stores/visualizationStore';
 
 export function Header() {
-  const { repository, cityData } = useVisualizationStore();
+  const { repository, cityData, criticalPathEnabled, toggleCriticalPath } = useVisualizationStore();
 
   const stats = repository?.stats;
   const repoName = repository ? `${repository.owner}/${repository.name}` : 'Loading...';
@@ -91,6 +91,53 @@ export function Header() {
             </div>
           )}
         </div>
+
+        {/* Critical Path Button */}
+        <motion.button
+          onClick={toggleCriticalPath}
+          className={`glass rounded-xl px-4 py-3 flex items-center gap-3 transition-all ${
+            criticalPathEnabled
+              ? 'bg-gradient-to-r from-amber-500/20 to-red-500/20 border border-amber-500/40'
+              : 'hover:bg-white/10'
+          }`}
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+        >
+          <div
+            className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
+              criticalPathEnabled
+                ? 'bg-amber-500/30'
+                : 'bg-white/10'
+            }`}
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke={criticalPathEnabled ? '#ffd700' : 'currentColor'}
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={criticalPathEnabled ? '' : 'text-white/60'}
+            >
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+          </div>
+          <div className="text-left">
+            <div className={`text-sm font-medium ${criticalPathEnabled ? 'text-amber-400' : 'text-white/80'}`}>
+              Critical Path
+            </div>
+            <div className="text-[10px] text-white/40">
+              {criticalPathEnabled ? 'Showing high-risk files' : 'Find risky files'}
+            </div>
+          </div>
+          {criticalPathEnabled && (
+            <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+          )}
+        </motion.button>
 
         {/* Controls hint */}
         <div className="glass rounded-xl p-3 text-xs text-white/50">
