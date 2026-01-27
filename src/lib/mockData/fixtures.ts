@@ -393,6 +393,8 @@ export function createEdgeCasesRepository(): RepositoryData {
         type: 'import',
         weight: Math.floor(Math.random() * 5) + 1,
       });
+      if (!hubFile.imports) hubFile.imports = [];
+      if (!file.importedBy) file.importedBy = [];
       hubFile.imports.push(file.id);
       file.importedBy.push(hubFile.id);
     }
@@ -624,6 +626,8 @@ function generateConnections(files: FileNode[], density: number): Connection[] {
         weight: Math.floor(Math.random() * 5) + 1,
         metadata,
       });
+      if (!source.imports) source.imports = [];
+      if (!target.importedBy) target.importedBy = [];
       source.imports.push(targetId);
       target.importedBy.push(sourceId);
     }

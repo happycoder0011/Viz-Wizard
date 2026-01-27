@@ -134,6 +134,7 @@ interface VisualizationState {
   setBloomIntensity: (intensity: number) => void;
   resetCamera: () => void;
   loadFixture: (fixtureType: FixtureType) => void;
+  loadFromSessionStorage: () => boolean; // Returns true if data was loaded
   togglePanelMinimized: (panel: 'zoomIndicator' | 'selectedBuilding' | 'controlPanel' | 'legend') => void;
 
   // Code Editor Actions
@@ -434,6 +435,62 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => ({
         });
       }
     }, 100);
+  },
+
+  loadFromSessionStorage: () => {
+    if (typeof window === 'undefined') return false;
+
+    try {
+      const storedData = sessionStorage.getItem('viz-wizard-repo');
+      const dataSource = sessionStorage.getItem('viz-wizard-repo-source');
+
+      if (!storedData || dataSource !== 'github') {
+        console.log('[loadFromSessionStorage] No GitHub repo data in sessionStorage');
+        return false;
+      }
+
+      console.log('[loadFromSessionStorage] Found GitHub repo data, loading...');
+      const repo: RepositoryData = JSON.parse(storedData);
+
+      set({ isLoading: true, selectedBuildingId: null, hoveredBuildingId: null, hoveredBuilding: null });
+
+      // Use setTimeout to allow UI to update before heavy computation
+      setTimeout(() => {
+        try {
+          console.log('[loadFromSessionStorage] Processing repo:', repo.name, 'files:', repo.allFiles?.length);
+          const city = repositoryToCityData(repo);
+          console.log('[loadFromSessionStorage] City generated, districts:', city?.districts?.length);
+
+          set({
+            repository: repo,
+            cityData: city,
+            isLoading: false,
+            cameraTarget: {
+              position: [30, 25, 30],
+              lookAt: [0, 0, 0],
+            },
+            isAnimatingCamera: true,
+          });
+
+          // Clear sessionStorage after successful load
+          sessionStorage.removeItem('viz-wizard-repo');
+          sessionStorage.removeItem('viz-wizard-repo-source');
+
+          console.log('[loadFromSessionStorage] Success!');
+        } catch (error) {
+          console.error('[loadFromSessionStorage] Error processing data:', error);
+          set({
+            error: error instanceof Error ? error.message : 'Failed to load repository data',
+            isLoading: false,
+          });
+        }
+      }, 100);
+
+      return true;
+    } catch (error) {
+      console.error('[loadFromSessionStorage] Error:', error);
+      return false;
+    }
   },
 
   // Code Editor Actions

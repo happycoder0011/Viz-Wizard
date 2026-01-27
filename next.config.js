@@ -2,7 +2,8 @@
 const nextConfig = {
   reactStrictMode: true,
   transpilePackages: ['three'],
-  output: 'export',
+  // Removed output: 'export' to enable API routes
+  // For static deployment, API routes need serverless functions
   images: {
     unoptimized: true,
   },

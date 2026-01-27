@@ -184,6 +184,10 @@ function generateConnections(allFiles: FileNode[]): Connection[] {
       const imports = shuffled.slice(0, numImports);
 
       imports.forEach((importedFile) => {
+        // Initialize arrays if undefined
+        if (!file.imports) file.imports = [];
+        if (!importedFile.importedBy) importedFile.importedBy = [];
+
         file.imports.push(importedFile.id);
         importedFile.importedBy.push(file.id);
 
@@ -276,6 +280,23 @@ export function generateMockRepository(
   };
 }
 
+// Group files by top-level directory from flat file list
+function groupFilesByTopDirectory(files: FileNode[]): Map<string, FileNode[]> {
+  const groups = new Map<string, FileNode[]>();
+
+  for (const file of files) {
+    // Get top-level directory (first path segment)
+    const pathParts = file.path.split('/');
+    const topDir = pathParts.length > 1 ? pathParts[0] : '(root)';
+
+    const existing = groups.get(topDir) || [];
+    existing.push(file);
+    groups.set(topDir, existing);
+  }
+
+  return groups;
+}
+
 // Convert repository data to city visualization data
 export function repositoryToCityData(repo: RepositoryData): CityData {
   const districts: DistrictData[] = [];
@@ -288,24 +309,46 @@ export function repositoryToCityData(repo: RepositoryData): CityData {
 
   let districtIndex = 0;
 
-  // Create a district for each top-level directory
-  repo.rootDirectory.directories.forEach((dir) => {
+  // Determine districts: use rootDirectory if available, otherwise group by path
+  interface DirectoryGroup {
+    name: string;
+    id: string;
+    files: FileNode[];
+  }
+
+  let directoryGroups: DirectoryGroup[] = [];
+
+  if (repo.rootDirectory) {
+    // Use tree structure - collect files from each top-level directory
+    directoryGroups = repo.rootDirectory.directories.map(dir => {
+      const allDirFiles: FileNode[] = [];
+      function collectDirFiles(d: DirectoryNode) {
+        allDirFiles.push(...d.files);
+        d.directories.forEach(collectDirFiles);
+      }
+      collectDirFiles(dir);
+      return { name: dir.name, id: dir.id, files: allDirFiles };
+    });
+  } else {
+    // Use flat file list - group by top-level directory
+    const grouped = groupFilesByTopDirectory(repo.allFiles);
+    directoryGroups = Array.from(grouped.entries()).map(([name, files]) => ({
+      name,
+      id: `dir-${name}`,
+      files,
+    }));
+  }
+
+  // Create a district for each directory group
+  directoryGroups.forEach((group) => {
     const districtX = (districtIndex % 3) * DISTRICT_SPACING - DISTRICT_SPACING;
     const districtZ = Math.floor(districtIndex / 3) * DISTRICT_SPACING - DISTRICT_SPACING;
 
     const buildings: BuildingData[] = [];
     let buildingIndex = 0;
 
-    // Collect all files in this directory (including subdirectories)
-    const allDirFiles: FileNode[] = [];
-    function collectDirFiles(d: DirectoryNode) {
-      allDirFiles.push(...d.files);
-      d.directories.forEach(collectDirFiles);
-    }
-    collectDirFiles(dir);
-
     // Create buildings for each file
-    allDirFiles.forEach((file) => {
+    group.files.forEach((file) => {
       const localX = (buildingIndex % 5) * BUILDING_SPACING - 6;
       const localZ = Math.floor(buildingIndex / 5) * BUILDING_SPACING - 6;
 
@@ -317,7 +360,7 @@ export function repositoryToCityData(repo: RepositoryData): CityData {
 
       const height = Math.max(0.5, file.lineCount * HEIGHT_SCALE);
       const width = 1.5 + (file.complexity / 100) * 0.5;
-      const depth = 1.5 + (file.imports.length / 10) * 0.3;
+      const depth = 1.5 + ((file.imports?.length || 0) / 10) * 0.3;
 
       const colors = CATEGORY_COLORS[file.category];
 
@@ -349,8 +392,8 @@ export function repositoryToCityData(repo: RepositoryData): CityData {
 
     const district: DistrictData = {
       id: generateId(),
-      directoryId: dir.id,
-      name: dir.name,
+      directoryId: group.id,
+      name: group.name,
       position: [districtX, 0, districtZ],
       bounds: {
         minX: Math.min(...allX) - 2,

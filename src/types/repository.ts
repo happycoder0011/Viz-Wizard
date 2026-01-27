@@ -30,14 +30,14 @@ export interface FileNode {
   id: string;
   name: string;
   path: string;
-  extension: FileExtension;
+  extension: string;        // More flexible than FileExtension enum
   category: FileCategory;
   lineCount: number;
   complexity: number;       // 0-100
-  imports: string[];        // IDs of imported files
-  importedBy: string[];     // IDs of files that import this
-  lastModified: Date;
-  author: string;
+  imports?: string[];       // IDs of imported files (optional until parsed)
+  importedBy?: string[];    // IDs of files that import this (optional until parsed)
+  lastModified?: Date;      // Optional - from git history
+  author?: string;          // Optional - from git history
   content?: string;         // Lazy-loaded file content
   language?: string;        // For syntax highlighting (typescript, javascript, css, json, markdown)
 }
@@ -55,8 +55,11 @@ export interface DirectoryNode {
 export interface RepositoryData {
   name: string;
   owner: string;
-  description: string;
-  rootDirectory: DirectoryNode;
+  description?: string;
+  defaultBranch?: string;
+  stars?: number;
+  forks?: number;
+  rootDirectory?: DirectoryNode;  // Optional - built on demand
   allFiles: FileNode[];
   connections: Connection[];
   stats: RepositoryStats;
@@ -91,8 +94,9 @@ export interface RepositoryStats {
   totalFiles: number;
   totalLines: number;
   totalDirectories: number;
-  languageBreakdown: Record<string, number>;
-  avgComplexity: number;
+  languageBreakdown?: Record<string, number>;
+  languages?: Record<string, number>;  // Alias for GitHub API format
+  avgComplexity?: number;
 }
 
 // Visualization-specific types
