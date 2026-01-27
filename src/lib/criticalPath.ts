@@ -25,11 +25,13 @@ export interface CriticalPathScore {
 
 /**
  * Calculate risk score for a single file
+ * @param velocityData Optional map of file paths to velocity scores (from git history)
  */
 export function calculateFileRisk(
   file: FileNode,
   connections: Connection[],
-  allFiles: FileNode[]
+  allFiles: FileNode[],
+  velocityData?: Map<string, number>
 ): CriticalPathScore {
   const factors: string[] = [];
 
@@ -58,11 +60,16 @@ export function calculateFileRisk(
   }
 
   // 3. Velocity Score: How often is this file changed?
-  // Mock for now - would come from git log in real implementation
-  // Use file size and complexity as proxy (larger/complex files change more)
-  const velocityScore = Math.min(100, Math.round(
-    (file.lineCount / 10) + (file.complexity * 0.5) + (Math.random() * 20)
-  ));
+  // Use real git history data if available, otherwise estimate
+  let velocityScore: number;
+  if (velocityData && velocityData.has(file.path)) {
+    velocityScore = velocityData.get(file.path)!;
+  } else {
+    // Estimate based on file size and complexity (larger/complex files tend to change more)
+    velocityScore = Math.min(100, Math.round(
+      (file.lineCount / 10) + (file.complexity * 0.5) + (Math.random() * 20)
+    ));
+  }
 
   if (velocityScore >= 60) {
     factors.push('Frequently modified');
@@ -132,17 +139,19 @@ export function calculateFileRisk(
 
 /**
  * Calculate risk scores for all files and return top N critical files
+ * @param velocityData Optional map of file paths to velocity scores (from git history)
  */
 export function calculateCriticalPath(
   files: FileNode[],
   connections: Connection[],
-  topN: number = 10
+  topN: number = 10,
+  velocityData?: Map<string, number>
 ): CriticalPathScore[] {
   // Calculate risk for all non-test, non-config files
   // (or include them but they'll naturally score lower)
   const scores = files
     .filter(f => f.category !== 'docs') // Exclude documentation
-    .map(file => calculateFileRisk(file, connections, files));
+    .map(file => calculateFileRisk(file, connections, files, velocityData));
 
   // Sort by overall risk (descending) and take top N
   return scores

@@ -98,6 +98,36 @@ export class GitHubClient {
   }
 
   /**
+   * Make authenticated request to a full URL (for external GitHub API calls)
+   */
+  async fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
+    const headers: HeadersInit = {
+      'Accept': 'application/vnd.github.v3+json',
+      'User-Agent': 'Viz-Wizard',
+      ...options.headers,
+    };
+
+    if (this.token) {
+      (headers as Record<string, string>)['Authorization'] = `Bearer ${this.token}`;
+    }
+
+    const response = await fetch(url, {
+      ...options,
+      headers,
+    });
+
+    // Update rate limit info
+    this.rateLimit = {
+      limit: parseInt(response.headers.get('x-ratelimit-limit') || '60'),
+      remaining: parseInt(response.headers.get('x-ratelimit-remaining') || '60'),
+      reset: parseInt(response.headers.get('x-ratelimit-reset') || '0'),
+      used: parseInt(response.headers.get('x-ratelimit-used') || '0'),
+    };
+
+    return response;
+  }
+
+  /**
    * Make authenticated request to GitHub API
    */
   private async fetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {

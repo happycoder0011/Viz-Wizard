@@ -1,10 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GitHubClient, GitHubAPIError, GitHubTreeItem } from '@/lib/github/client';
 import { FileNode, FileCategory, Connection, RepositoryData } from '@/types/repository';
+import {
+  ParseltongueClient,
+  mergeGitHubWithParseltongue,
+  getCriticalPathFiles,
+  type CriticalPathScore,
+} from '@/lib/parseltongue';
 
 // Simple in-memory cache (replace with KV in production)
 const cache = new Map<string, { data: RepositoryData; timestamp: number }>();
 const CACHE_TTL = 1000 * 60 * 60; // 1 hour
+
+// Default Parseltongue server URL
+const DEFAULT_PARSELTONGUE_URL = 'http://localhost:7777';
 
 /**
  * Determine file category based on path and extension
@@ -203,14 +212,78 @@ function generateConnections(files: FileNode[]): Connection[] {
 }
 
 /**
+ * Try to enhance repository data with Parseltongue analysis
+ * Returns null if Parseltongue is not available
+ */
+async function tryParseltongueEnhancement(
+  files: FileNode[],
+  parseltongueUrl: string
+): Promise<{
+  enhancedFiles: FileNode[];
+  enhancedConnections: Connection[];
+  criticalPath: CriticalPathScore[];
+} | null> {
+  try {
+    const ptClient = new ParseltongueClient({
+      baseUrl: parseltongueUrl,
+      timeout: 30000,
+    });
+
+    // Check if Parseltongue is available
+    const healthy = await ptClient.healthCheck();
+    if (!healthy) {
+      return null;
+    }
+
+    // Fetch Parseltongue data
+    const [graphData, hotspots] = await Promise.all([
+      ptClient.getEntitiesWithRelationships(),
+      ptClient.getHotspots(100),
+    ]);
+
+    const { entities, dependencies } = graphData;
+
+    // If no entities, Parseltongue hasn't indexed this repo
+    if (entities.length === 0) {
+      return null;
+    }
+
+    // Merge GitHub files with Parseltongue analysis
+    const { files: enhancedFiles, connections: enhancedConnections } =
+      mergeGitHubWithParseltongue(files, entities, dependencies, hotspots);
+
+    // Get critical path scores
+    const criticalPath = await getCriticalPathFiles(ptClient, 20);
+
+    return {
+      enhancedFiles,
+      enhancedConnections,
+      criticalPath,
+    };
+  } catch (error) {
+    // Parseltongue not available or error - fall back to basic analysis
+    console.log('Parseltongue enhancement not available:', error instanceof Error ? error.message : 'Unknown error');
+    return null;
+  }
+}
+
+/**
  * GET /api/repo/[owner]/[name]
  * Fetch and analyze a GitHub repository
+ *
+ * Query params:
+ * - parseltongue: URL of Parseltongue server (default: http://localhost:7777)
+ * - skipParseltongue: Set to 'true' to skip Parseltongue enhancement
  */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ owner: string; name: string }> }
 ) {
   const { owner, name } = await params;
+  const { searchParams } = new URL(request.url);
+  const parseltongueUrl = searchParams.get('parseltongue') || DEFAULT_PARSELTONGUE_URL;
+  const skipParseltongue = searchParams.get('skipParseltongue') === 'true';
+
   const cacheKey = `${owner}/${name}`;
 
   // Check cache
@@ -236,9 +309,22 @@ export async function GET(
       client.getLanguages(owner, name),
     ]);
 
-    // Transform to Viz-Wizard format
-    const files = treeToFileNodes(tree);
-    const connections = generateConnections(files);
+    // Transform to Viz-Wizard format (basic analysis)
+    let files = treeToFileNodes(tree);
+    let connections = generateConnections(files);
+    let criticalPath: CriticalPathScore[] = [];
+    let analysisSource: 'github' | 'parseltongue' = 'github';
+
+    // Try to enhance with Parseltongue if not skipped
+    if (!skipParseltongue) {
+      const enhancement = await tryParseltongueEnhancement(files, parseltongueUrl);
+      if (enhancement) {
+        files = enhancement.enhancedFiles;
+        connections = enhancement.enhancedConnections;
+        criticalPath = enhancement.criticalPath;
+        analysisSource = 'parseltongue';
+      }
+    }
 
     // Calculate stats
     const stats = {
@@ -246,9 +332,18 @@ export async function GET(
       totalLines: files.reduce((sum, f) => sum + f.lineCount, 0),
       totalDirectories: new Set(files.map(f => f.path.split('/').slice(0, -1).join('/'))).size,
       languages,
+      avgComplexity: files.length > 0
+        ? files.reduce((sum, f) => sum + f.complexity, 0) / files.length
+        : 0,
     };
 
-    const repositoryData: RepositoryData = {
+    const repositoryData: RepositoryData & {
+      analysis?: {
+        source: string;
+        criticalPath: CriticalPathScore[];
+        parseltongueUrl?: string;
+      };
+    } = {
       owner: repoInfo.owner,
       name: repoInfo.name,
       description: repoInfo.description || undefined,
@@ -258,6 +353,11 @@ export async function GET(
       allFiles: files,
       connections,
       stats,
+      analysis: {
+        source: analysisSource,
+        criticalPath,
+        parseltongueUrl: analysisSource === 'parseltongue' ? parseltongueUrl : undefined,
+      },
     };
 
     // Cache the result
@@ -269,6 +369,7 @@ export async function GET(
     return NextResponse.json(repositoryData, {
       headers: {
         'X-Cache': 'MISS',
+        'X-Analysis-Source': analysisSource,
         'X-RateLimit-Remaining': client.getRateLimit()?.remaining.toString() || 'unknown',
       },
     });

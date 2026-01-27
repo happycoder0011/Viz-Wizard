@@ -137,6 +137,14 @@ export function Scene() {
   // Initialize scene data before rendering Canvas
   useInitializeScene();
 
+  const { hoverBuilding } = useVisualizationStore();
+
+  // Clear hover state when pointer misses all objects
+  const handlePointerMissed = () => {
+    hoverBuilding(null, null);
+    document.body.style.cursor = 'auto';
+  };
+
   return (
     <Canvas
       className="canvas-container"
@@ -153,6 +161,7 @@ export function Scene() {
         far: 500,
         position: [30, 25, 30],
       }}
+      onPointerMissed={handlePointerMissed}
     >
       <color attach="background" args={['#050508']} />
 

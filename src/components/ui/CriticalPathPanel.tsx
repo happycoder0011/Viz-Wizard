@@ -12,9 +12,21 @@ export function CriticalPathPanel() {
     criticalFiles,
     focusOnCriticalFile,
     openCodeEditor,
+    repository,
+    gitHistoryData,
+    gitHistoryLoading,
+    loadGitHistory,
   } = useVisualizationStore();
 
   if (!criticalPathEnabled || criticalFiles.length === 0) return null;
+
+  const hasRealVelocityData = !!gitHistoryData;
+
+  const handleLoadGitHistory = () => {
+    if (repository?.owner && repository?.name) {
+      loadGitHistory(repository.owner, repository.name);
+    }
+  };
 
   return (
     <AnimatePresence>
@@ -48,22 +60,54 @@ export function CriticalPathPanel() {
               <div>
                 <h3 className="text-sm font-semibold text-white">Critical Path Radar</h3>
                 <p className="text-[10px] text-white/50">
-                  Top {criticalFiles.length} high-risk files in your codebase
+                  Top {criticalFiles.length} high-risk files
+                  {hasRealVelocityData && (
+                    <span className="ml-1 text-green-400">• Using git history</span>
+                  )}
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-4 text-[10px] text-white/40">
-              <div className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-red-500" />
-                <span>Critical</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-amber-500" />
-                <span>High</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-yellow-400" />
-                <span>Medium</span>
+            <div className="flex items-center gap-4">
+              {/* Git History Button */}
+              {!hasRealVelocityData && repository?.owner && (
+                <button
+                  onClick={handleLoadGitHistory}
+                  disabled={gitHistoryLoading}
+                  className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white/10 hover:bg-white/20 transition-colors text-[10px] text-white/70 hover:text-white disabled:opacity-50"
+                >
+                  {gitHistoryLoading ? (
+                    <>
+                      <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" opacity="0.25" />
+                        <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      </svg>
+                      Loading...
+                    </>
+                  ) : (
+                    <>
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="12" cy="12" r="4" />
+                        <path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.92 7.94" />
+                      </svg>
+                      Load Git History
+                    </>
+                  )}
+                </button>
+              )}
+              {/* Legend */}
+              <div className="flex items-center gap-3 text-[10px] text-white/40">
+                <div className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-red-500" />
+                  <span>Critical</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-amber-500" />
+                  <span>High</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-yellow-400" />
+                  <span>Medium</span>
+                </div>
               </div>
             </div>
           </div>

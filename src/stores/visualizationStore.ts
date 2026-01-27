@@ -4,6 +4,28 @@ import { FixtureType, getFixture } from '@/lib/mockData/fixtures';
 import { repositoryToCityData, generateMockRepository } from '@/lib/mockData';
 import { CriticalPathScore, calculateCriticalPath } from '@/lib/criticalPath';
 
+// Git history types
+export interface GitHistoryData {
+  velocityData: Record<string, {
+    velocityScore: number;
+    changeCount: number;
+    churnScore: number;
+    lastChanged: string;
+  }>;
+  ownershipData: Record<string, {
+    primaryOwner: string;
+    busFactor: number;
+    ownershipScore: number;
+    riskLevel: 'low' | 'medium' | 'high';
+  }>;
+  contributors: Array<{
+    login: string;
+    avatar: string;
+    contributions: number;
+  }>;
+  analyzedAt: string;
+}
+
 interface CameraTarget {
   position: [number, number, number];
   lookAt: [number, number, number];
@@ -94,6 +116,11 @@ interface VisualizationState {
   criticalFiles: CriticalPathScore[];
   criticalFileIds: Set<string>; // For quick lookup in Building component
 
+  // Git History State
+  gitHistoryData: GitHistoryData | null;
+  gitHistoryLoading: boolean;
+  gitHistoryError: string | null;
+
   // Code Copilot Chat State
   chatMessages: Array<{
     id: string;
@@ -162,6 +189,10 @@ interface VisualizationState {
   toggleCriticalPath: () => void;
   calculateCriticalPathScores: () => void;
   focusOnCriticalFile: (fileId: string) => void;
+
+  // Git History Actions
+  loadGitHistory: (owner: string, name: string) => Promise<void>;
+  clearGitHistory: () => void;
 
   // Code Copilot Chat Actions
   toggleChatPanel: () => void;
@@ -243,6 +274,11 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => ({
   criticalPathEnabled: false,
   criticalFiles: [],
   criticalFileIds: new Set(),
+
+  // Git History State
+  gitHistoryData: null,
+  gitHistoryLoading: false,
+  gitHistoryError: null,
 
   // Code Copilot Chat State
   chatMessages: [],
@@ -723,6 +759,69 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => ({
         return;
       }
     }
+  },
+
+  // Git History Actions
+  loadGitHistory: async (owner: string, name: string) => {
+    set({ gitHistoryLoading: true, gitHistoryError: null });
+
+    try {
+      const response = await fetch(`/api/repo/${owner}/${name}/history?days=90&maxCommits=100`);
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to load git history');
+      }
+
+      const data = await response.json();
+
+      set({
+        gitHistoryData: {
+          velocityData: data.velocityData,
+          ownershipData: data.ownershipData,
+          contributors: data.contributors,
+          analyzedAt: data.analyzedAt,
+        },
+        gitHistoryLoading: false,
+      });
+
+      // Recalculate critical path with velocity data
+      const { repository, criticalPathEnabled } = get();
+      if (repository && criticalPathEnabled) {
+        // Update critical path scores with real velocity data
+        const velocityMap = new Map(
+          Object.entries(data.velocityData).map(([path, v]: [string, any]) => [
+            path,
+            v.velocityScore,
+          ])
+        );
+
+        const scores = calculateCriticalPath(
+          repository.allFiles,
+          repository.connections,
+          10,
+          velocityMap
+        );
+        const criticalIds = new Set(scores.map(s => s.fileId));
+
+        set({
+          criticalFiles: scores,
+          criticalFileIds: criticalIds,
+        });
+      }
+    } catch (error) {
+      set({
+        gitHistoryError: error instanceof Error ? error.message : 'Failed to load git history',
+        gitHistoryLoading: false,
+      });
+    }
+  },
+
+  clearGitHistory: () => {
+    set({
+      gitHistoryData: null,
+      gitHistoryError: null,
+    });
   },
 
   // Code Copilot Chat Actions
