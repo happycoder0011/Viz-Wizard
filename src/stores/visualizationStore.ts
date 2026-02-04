@@ -4,6 +4,7 @@ import { FixtureType, getFixture } from '@/lib/mockData/fixtures';
 import { repositoryToCityData, generateMockRepository } from '@/lib/mockData';
 import { CriticalPathScore, calculateCriticalPath } from '@/lib/criticalPath';
 import { generateInsights, type CodebaseInsights } from '@/lib/insightsEngine';
+import { buildBuildingIndices } from '@/lib/buildingLookup';
 
 // Git history types
 export interface GitHistoryData {
@@ -121,6 +122,11 @@ interface VisualizationState {
   gitHistoryData: GitHistoryData | null;
   gitHistoryLoading: boolean;
   gitHistoryError: string | null;
+
+  // Building indices for O(1) lookups
+  flatBuildings: BuildingData[];
+  buildingIdToIndex: Map<string, number>;
+  fileIdToBuildingIndex: Map<string, number>;
 
   // Insights Panel State
   insightsPanelOpen: boolean;
@@ -293,6 +299,11 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => ({
   gitHistoryLoading: false,
   gitHistoryError: null,
 
+  // Building indices
+  flatBuildings: [],
+  buildingIdToIndex: new Map(),
+  fileIdToBuildingIndex: new Map(),
+
   // Insights Panel State
   insightsPanelOpen: true,
   codebaseInsights: null,
@@ -318,37 +329,29 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => ({
   setError: (error) => set({ error, isLoading: false }),
 
   selectBuilding: (buildingId) => {
-    const { cityData } = get();
     // Clear insights highlight when manually selecting
     if (buildingId) get().clearInsightsHighlight();
-    if (!cityData || !buildingId) {
+    if (!buildingId) {
       set({ selectedBuildingId: null, cameraTarget: null });
       return;
     }
 
-    // Find the building
-    let selectedBuilding: BuildingData | null = null;
-    for (const district of cityData.districts) {
-      const building = district.buildings.find(b => b.id === buildingId);
-      if (building) {
-        selectedBuilding = building;
-        break;
-      }
-    }
+    const { flatBuildings, buildingIdToIndex } = get();
+    const idx = buildingIdToIndex.get(buildingId);
+    if (idx === undefined) return;
 
-    if (selectedBuilding) {
-      const [x, y, z] = selectedBuilding.position;
-      const height = selectedBuilding.dimensions[1];
+    const building = flatBuildings[idx];
+    const [x, y, z] = building.position;
+    const height = building.dimensions[1];
 
-      set({
-        selectedBuildingId: buildingId,
-        cameraTarget: {
-          position: [x + 10, height + 8, z + 10],
-          lookAt: [x, height / 2, z],
-        },
-        isAnimatingCamera: true,
-      });
-    }
+    set({
+      selectedBuildingId: buildingId,
+      cameraTarget: {
+        position: [x + 10, height + 8, z + 10],
+        lookAt: [x, height / 2, z],
+      },
+      isAnimatingCamera: true,
+    });
   },
 
   hoverBuilding: (buildingId, building) => set({
@@ -471,10 +474,14 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => ({
         console.log('[loadFixture] Got repo:', repo?.name, 'files:', repo?.allFiles?.length);
         const city = repositoryToCityData(repo);
         console.log('[loadFixture] Got city data, districts:', city?.districts?.length);
+        const indices = buildBuildingIndices(city);
         set({
           currentFixture: fixtureType,
           repository: repo,
           cityData: city,
+          flatBuildings: indices.flatBuildings,
+          buildingIdToIndex: indices.buildingIdToIndex,
+          fileIdToBuildingIndex: indices.fileIdToBuildingIndex,
           isLoading: false,
           cameraTarget: {
             position: [30, 25, 30],
@@ -518,10 +525,14 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => ({
           console.log('[loadFromSessionStorage] Processing repo:', repo.name, 'files:', repo.allFiles?.length);
           const city = repositoryToCityData(repo);
           console.log('[loadFromSessionStorage] City generated, districts:', city?.districts?.length);
+          const indices = buildBuildingIndices(city);
 
           set({
             repository: repo,
             cityData: city,
+            flatBuildings: indices.flatBuildings,
+            buildingIdToIndex: indices.buildingIdToIndex,
+            fileIdToBuildingIndex: indices.fileIdToBuildingIndex,
             isLoading: false,
             cameraTarget: {
               position: [30, 25, 30],
@@ -554,9 +565,13 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => ({
   },
 
   loadRepoDirectly: (repo: RepositoryData, city: CityData) => {
+    const indices = buildBuildingIndices(city);
     set({
       repository: repo,
       cityData: city,
+      flatBuildings: indices.flatBuildings,
+      buildingIdToIndex: indices.buildingIdToIndex,
+      fileIdToBuildingIndex: indices.fileIdToBuildingIndex,
       isLoading: false,
       selectedBuildingId: null,
       hoveredBuildingId: null,
@@ -702,27 +717,22 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => ({
   }),
 
   focusOnUsageFile: (fileId: string) => {
-    const { cityData } = get();
-    if (!cityData) return;
+    const { flatBuildings, fileIdToBuildingIndex } = get();
+    const idx = fileIdToBuildingIndex.get(fileId);
+    if (idx === undefined) return;
 
-    // Find the building for this file
-    for (const district of cityData.districts) {
-      const building = district.buildings.find(b => b.fileId === fileId);
-      if (building) {
-        const [x, y, z] = building.position;
-        const height = building.dimensions[1];
+    const building = flatBuildings[idx];
+    const [x, y, z] = building.position;
+    const height = building.dimensions[1];
 
-        set({
-          selectedBuildingId: building.id,
-          cameraTarget: {
-            position: [x + 10, height + 8, z + 10],
-            lookAt: [x, height / 2, z],
-          },
-          isAnimatingCamera: true,
-        });
-        return;
-      }
-    }
+    set({
+      selectedBuildingId: building.id,
+      cameraTarget: {
+        position: [x + 10, height + 8, z + 10],
+        lookAt: [x, height / 2, z],
+      },
+      isAnimatingCamera: true,
+    });
   },
 
   // Critical Path Radar Actions
@@ -782,27 +792,22 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => ({
   },
 
   focusOnCriticalFile: (fileId: string) => {
-    const { cityData } = get();
-    if (!cityData) return;
+    const { flatBuildings, fileIdToBuildingIndex } = get();
+    const idx = fileIdToBuildingIndex.get(fileId);
+    if (idx === undefined) return;
 
-    // Find the building for this file
-    for (const district of cityData.districts) {
-      const building = district.buildings.find(b => b.fileId === fileId);
-      if (building) {
-        const [x, y, z] = building.position;
-        const height = building.dimensions[1];
+    const building = flatBuildings[idx];
+    const [x, y, z] = building.position;
+    const height = building.dimensions[1];
 
-        set({
-          selectedBuildingId: building.id,
-          cameraTarget: {
-            position: [x + 10, height + 8, z + 10],
-            lookAt: [x, height / 2, z],
-          },
-          isAnimatingCamera: true,
-        });
-        return;
-      }
-    }
+    set({
+      selectedBuildingId: building.id,
+      cameraTarget: {
+        position: [x + 10, height + 8, z + 10],
+        lookAt: [x, height / 2, z],
+      },
+      isAnimatingCamera: true,
+    });
   },
 
   // Insights Panel Actions
@@ -816,8 +821,8 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => ({
   },
 
   showInsightInView: (fileIds: string[]) => {
-    const { cityData, insightsHighlightedFileIds } = get();
-    if (!cityData || fileIds.length === 0) return;
+    const { flatBuildings, fileIdToBuildingIndex, insightsHighlightedFileIds } = get();
+    if (fileIds.length === 0) return;
 
     // Toggle off if same files are already highlighted
     const currentIds = [...insightsHighlightedFileIds];
@@ -828,13 +833,12 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => ({
 
     set({ insightsHighlightedFileIds: new Set(fileIds) });
 
-    // Find building positions for camera targeting
+    // Find building positions for camera targeting (O(1) per file via index)
     const positions: [number, number, number][] = [];
-    for (const district of cityData.districts) {
-      for (const building of district.buildings) {
-        if (fileIds.includes(building.fileId)) {
-          positions.push(building.position);
-        }
+    for (const fid of fileIds) {
+      const idx = fileIdToBuildingIndex.get(fid);
+      if (idx !== undefined) {
+        positions.push(flatBuildings[idx].position);
       }
     }
 

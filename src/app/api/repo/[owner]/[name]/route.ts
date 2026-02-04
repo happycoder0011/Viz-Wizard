@@ -121,7 +121,7 @@ function estimateComplexity(size: number): number {
 }
 
 // Max files to process — prevents browser crashes on huge repos like VS Code
-const MAX_FILES = 500;
+const MAX_FILES = 10_000;
 
 const SUPPORTED_EXTENSIONS = new Set([
   'ts', 'tsx', 'js', 'jsx', 'py', 'rs', 'go', 'java', 'c', 'cpp', 'h', 'hpp',
