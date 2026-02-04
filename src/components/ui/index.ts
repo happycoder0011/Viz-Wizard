@@ -9,3 +9,4 @@ export { ConnectionTooltip } from './ConnectionTooltip';
 export { ConnectionDetailsPanel } from './ConnectionDetailsPanel';
 export { FindUsagesPanel } from './FindUsagesPanel';
 export { CriticalPathPanel } from './CriticalPathPanel';
+export { InsightsPanel } from './InsightsPanel';

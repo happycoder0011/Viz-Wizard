@@ -28,6 +28,7 @@ export function Building({ data }: BuildingProps) {
   const criticalPathEnabled = useVisualizationStore(state => state.criticalPathEnabled);
   const criticalFileIds = useVisualizationStore(state => state.criticalFileIds);
   const criticalFiles = useVisualizationStore(state => state.criticalFiles);
+  const insightsHighlightedFileIds = useVisualizationStore(state => state.insightsHighlightedFileIds);
 
   const isSelected = selectedBuildingId === data.id;
   const isOtherHovered = hoveredBuildingId !== null && hoveredBuildingId !== data.id;
@@ -35,6 +36,8 @@ export function Building({ data }: BuildingProps) {
   const isInFindUsagesMode = findUsagesOpen === true;
   const isCritical = criticalFileIds instanceof Set ? criticalFileIds.has(data.fileId) : false;
   const isInCriticalPathMode = criticalPathEnabled === true;
+  const isInsightsHighlighted = insightsHighlightedFileIds instanceof Set ? insightsHighlightedFileIds.has(data.fileId) : false;
+  const isInInsightsMode = insightsHighlightedFileIds instanceof Set && insightsHighlightedFileIds.size > 0;
 
   // Get risk score for this file if in critical path mode
   const riskScore = isInCriticalPathMode && isCritical
@@ -141,6 +144,13 @@ export function Building({ data }: BuildingProps) {
       } else {
         targetScale = 0.9; // Dim non-highlighted buildings
       }
+    } else if (isInInsightsMode) {
+      // In insights highlight mode
+      if (isInsightsHighlighted) {
+        targetScale = isHovered ? 1.15 : 1.08;
+      } else {
+        targetScale = 0.9;
+      }
     } else {
       // Normal mode
       if (isSelected) targetScale = 1.1;
@@ -156,7 +166,8 @@ export function Building({ data }: BuildingProps) {
     // Floating animation for critical/selected/highlighted buildings
     const shouldFloat = isSelected ||
       (isInFindUsagesMode && isHighlighted) ||
-      (isInCriticalPathMode && isCritical);
+      (isInCriticalPathMode && isCritical) ||
+      (isInInsightsMode && isInsightsHighlighted);
 
     if (shouldFloat) {
       // More dramatic float for critical buildings
@@ -193,11 +204,19 @@ export function Building({ data }: BuildingProps) {
         return materials.dimmed;
       }
     }
+    if (isInInsightsMode) {
+      // In insights highlight mode
+      if (isInsightsHighlighted) {
+        return isHovered ? materials.selected : materials.highlighted;
+      } else {
+        return materials.dimmed;
+      }
+    }
     // Normal mode
     if (isSelected) return materials.selected;
     if (isHovered) return materials.hovered;
     return materials.standard;
-  }, [isInCriticalPathMode, isCritical, riskScore, isInFindUsagesMode, isHighlighted, isSelected, isHovered, materials]);
+  }, [isInCriticalPathMode, isCritical, riskScore, isInFindUsagesMode, isHighlighted, isInInsightsMode, isInsightsHighlighted, isSelected, isHovered, materials]);
 
   // Event handlers
   const handlePointerOver = (e: any) => {
@@ -245,6 +264,8 @@ export function Building({ data }: BuildingProps) {
               ? (riskScore >= 70 ? '#ff4444' : '#ffd700')
               : isInFindUsagesMode && isHighlighted
               ? '#00ff88'
+              : isInInsightsMode && isInsightsHighlighted
+              ? '#00ff88'
               : data.emissiveColor
           }
           transparent
@@ -253,6 +274,8 @@ export function Building({ data }: BuildingProps) {
               ? isCritical ? 0.6 : 0.03
               : isInFindUsagesMode
               ? isHighlighted ? 0.5 : 0.05
+              : isInInsightsMode
+              ? isInsightsHighlighted ? 0.5 : 0.05
               : isSelected ? 0.4 : isHovered ? 0.25 : 0.1
           }
         />

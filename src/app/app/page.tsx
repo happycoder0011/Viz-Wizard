@@ -2,6 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import { Header } from '@/components/ui/Header';
+import { InsightsPanel } from '@/components/ui/InsightsPanel';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
 import { ControlPanel } from '@/components/ui/ControlPanel';
@@ -43,6 +44,7 @@ export default function Home() {
 
       {/* UI Overlays */}
       <Header />
+      <InsightsPanel />
       <Breadcrumbs />
       <Tooltip />
       <ControlPanel />

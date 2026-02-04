@@ -228,21 +228,6 @@ export function Header() {
         </motion.button>
         </div>
 
-        {/* Controls hint */}
-        <div className="glass rounded-xl p-3 text-xs text-white/50">
-          <div className="flex items-center gap-2 mb-1">
-            <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white/70 font-mono">Drag</kbd>
-            <span>Rotate</span>
-          </div>
-          <div className="flex items-center gap-2 mb-1">
-            <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white/70 font-mono">Scroll</kbd>
-            <span>Zoom</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white/70 font-mono">Click</kbd>
-            <span>Select</span>
-          </div>
-        </div>
       </div>
     </motion.header>
   );

@@ -3,6 +3,7 @@ import { RepositoryData, CityData, BuildingData, ZoomLevel, BreadcrumbItem, ZOOM
 import { FixtureType, getFixture } from '@/lib/mockData/fixtures';
 import { repositoryToCityData, generateMockRepository } from '@/lib/mockData';
 import { CriticalPathScore, calculateCriticalPath } from '@/lib/criticalPath';
+import { generateInsights, type CodebaseInsights } from '@/lib/insightsEngine';
 
 // Git history types
 export interface GitHistoryData {
@@ -121,6 +122,11 @@ interface VisualizationState {
   gitHistoryLoading: boolean;
   gitHistoryError: string | null;
 
+  // Insights Panel State
+  insightsPanelOpen: boolean;
+  codebaseInsights: CodebaseInsights | null;
+  insightsHighlightedFileIds: Set<string>;
+
   // Code Copilot Chat State
   chatMessages: Array<{
     id: string;
@@ -190,6 +196,12 @@ interface VisualizationState {
   calculateCriticalPathScores: () => void;
   focusOnCriticalFile: (fileId: string) => void;
 
+  // Insights Panel Actions
+  toggleInsightsPanel: () => void;
+  generateCodebaseInsights: () => void;
+  showInsightInView: (fileIds: string[]) => void;
+  clearInsightsHighlight: () => void;
+
   // Git History Actions
   loadGitHistory: (owner: string, name: string) => Promise<void>;
   clearGitHistory: () => void;
@@ -236,10 +248,10 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => ({
   showLabels: true,
   bloomIntensity: 1.5,
   minimizedPanels: {
-    zoomIndicator: false,
+    zoomIndicator: true,
     selectedBuilding: false,
-    controlPanel: false,
-    legend: false,
+    controlPanel: true,
+    legend: true,
   },
 
   // Code Editor State
@@ -280,6 +292,11 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => ({
   gitHistoryLoading: false,
   gitHistoryError: null,
 
+  // Insights Panel State
+  insightsPanelOpen: true,
+  codebaseInsights: null,
+  insightsHighlightedFileIds: new Set<string>(),
+
   // Code Copilot Chat State
   chatMessages: [],
   chatLoading: false,
@@ -301,6 +318,8 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => ({
 
   selectBuilding: (buildingId) => {
     const { cityData } = get();
+    // Clear insights highlight when manually selecting
+    if (buildingId) get().clearInsightsHighlight();
     if (!cityData || !buildingId) {
       set({ selectedBuildingId: null, cameraTarget: null });
       return;
@@ -463,6 +482,8 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => ({
           isAnimatingCamera: true,
         });
         console.log('[loadFixture] Success! isLoading set to false');
+        // Generate insights after city renders
+        setTimeout(() => get().generateCodebaseInsights(), 200);
       } catch (error) {
         console.error('[loadFixture] Error:', error);
         set({
@@ -513,6 +534,8 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => ({
           sessionStorage.removeItem('viz-wizard-repo-source');
 
           console.log('[loadFromSessionStorage] Success!');
+          // Generate insights after city renders
+          setTimeout(() => get().generateCodebaseInsights(), 200);
         } catch (error) {
           console.error('[loadFromSessionStorage] Error processing data:', error);
           set({
@@ -580,6 +603,7 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => ({
 
   // Find Usages Actions
   openFindUsages: (fileId: string) => {
+    get().clearInsightsHighlight();
     const { repository, cityData } = get();
     if (!repository || !cityData) return;
 
@@ -684,6 +708,7 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => ({
 
   // Critical Path Radar Actions
   toggleCriticalPath: () => {
+    get().clearInsightsHighlight();
     const { criticalPathEnabled, criticalFiles, repository } = get();
 
     if (!criticalPathEnabled) {
@@ -761,6 +786,62 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => ({
     }
   },
 
+  // Insights Panel Actions
+  toggleInsightsPanel: () => set((state) => ({ insightsPanelOpen: !state.insightsPanelOpen })),
+
+  generateCodebaseInsights: () => {
+    const { repository, gitHistoryData } = get();
+    if (!repository) return;
+    const insights = generateInsights(repository, gitHistoryData);
+    set({ codebaseInsights: insights, insightsPanelOpen: true });
+  },
+
+  showInsightInView: (fileIds: string[]) => {
+    const { cityData, insightsHighlightedFileIds } = get();
+    if (!cityData || fileIds.length === 0) return;
+
+    // Toggle off if same files are already highlighted
+    const currentIds = [...insightsHighlightedFileIds];
+    if (currentIds.length === fileIds.length && fileIds.every(id => insightsHighlightedFileIds.has(id))) {
+      set({ insightsHighlightedFileIds: new Set<string>() });
+      return;
+    }
+
+    set({ insightsHighlightedFileIds: new Set(fileIds) });
+
+    // Find building positions for camera targeting
+    const positions: [number, number, number][] = [];
+    for (const district of cityData.districts) {
+      for (const building of district.buildings) {
+        if (fileIds.includes(building.fileId)) {
+          positions.push(building.position);
+        }
+      }
+    }
+
+    if (positions.length === 0) return;
+
+    const avgX = positions.reduce((s, p) => s + p[0], 0) / positions.length;
+    const avgY = positions.reduce((s, p) => s + p[1], 0) / positions.length;
+    const avgZ = positions.reduce((s, p) => s + p[2], 0) / positions.length;
+
+    const spread = positions.length > 1
+      ? Math.max(...positions.map(p => Math.sqrt((p[0] - avgX) ** 2 + (p[2] - avgZ) ** 2))) + 10
+      : 12;
+
+    set({
+      cameraTarget: {
+        position: [avgX + spread * 0.6, avgY + spread * 0.8, avgZ + spread * 0.6],
+        lookAt: [avgX, avgY, avgZ],
+      },
+      isAnimatingCamera: true,
+      // Clear building selection to avoid conflicts with insight highlighting
+      selectedBuildingId: null,
+    });
+  },
+
+  clearInsightsHighlight: () => set({ insightsHighlightedFileIds: new Set<string>() }),
+
   // Git History Actions
   loadGitHistory: async (owner: string, name: string) => {
     set({ gitHistoryLoading: true, gitHistoryError: null });
@@ -784,6 +865,9 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => ({
         },
         gitHistoryLoading: false,
       });
+
+      // Re-generate insights with bus factor data
+      get().generateCodebaseInsights();
 
       // Recalculate critical path with velocity data
       const { repository, criticalPathEnabled } = get();

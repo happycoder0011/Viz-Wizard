@@ -16,7 +16,11 @@ const LEGEND_ITEMS: { category: FileCategory; label: string; description: string
 
 export function Legend() {
   const { minimizedPanels, togglePanelMinimized } = useVisualizationStore();
+  const criticalPathEnabled = useVisualizationStore(state => state.criticalPathEnabled);
   const isMinimized = minimizedPanels.legend;
+
+  // Hide legend when critical path panel occupies same position
+  if (criticalPathEnabled) return null;
 
   return (
     <motion.div
