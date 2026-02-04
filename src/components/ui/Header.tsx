@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { useVisualizationStore } from '@/stores/visualizationStore';
 
@@ -28,9 +29,9 @@ export function Header() {
       <div className="flex items-start justify-between">
         {/* Logo and repo info */}
         <div className="glass rounded-xl p-4 max-w-md">
-          <div className="flex items-center gap-3 mb-3">
+          <Link href="/explore" className="flex items-center gap-3 mb-3 group cursor-pointer">
             {/* Logo */}
-            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-viz-cyan/20 to-viz-purple/20 flex items-center justify-center border border-viz-cyan/30">
+            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-viz-cyan/20 to-viz-purple/20 flex items-center justify-center border border-viz-cyan/30 group-hover:border-viz-cyan/60 transition-colors">
               <svg
                 width="24"
                 height="24"
@@ -63,10 +64,10 @@ export function Header() {
             </div>
 
             <div>
-              <h1 className="text-sm font-semibold text-white/90">Viz-Wizard</h1>
+              <h1 className="text-sm font-semibold text-white/90 group-hover:text-viz-cyan transition-colors">Viz-Wizard</h1>
               <p className="text-xs text-white/50">Codebase Visualization</p>
             </div>
-          </div>
+          </Link>
 
           {/* Repository name */}
           <div className="flex items-center gap-2 mb-3">

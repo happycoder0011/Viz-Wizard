@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { GitHubClient } from '@/lib/github/client';
+import { useVisualizationStore } from '@/stores/visualizationStore';
+import { repositoryToCityData } from '@/lib/mockData';
 
 export default function ExplorePage() {
   const router = useRouter();
@@ -31,8 +33,13 @@ export default function ExplorePage() {
     setIsLoading(true);
 
     try {
-      // Verify the repo exists by calling our API
-      const response = await fetch(`/api/repo/${parsed.owner}/${parsed.name}`);
+      // Fetch repo data with a timeout for large repos
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 60000); // 60s timeout
+      const response = await fetch(`/api/repo/${parsed.owner}/${parsed.name}`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
 
       if (!response.ok) {
         const data = await response.json();
@@ -47,16 +54,21 @@ export default function ExplorePage() {
         return;
       }
 
-      // Store the repo data in sessionStorage for the app to use
+      // Load repo data directly into the Zustand store
       const repoData = await response.json();
-      sessionStorage.setItem('viz-wizard-repo', JSON.stringify(repoData));
-      sessionStorage.setItem('viz-wizard-repo-source', 'github');
+      const cityData = repositoryToCityData(repoData);
+
+      useVisualizationStore.getState().loadRepoDirectly(repoData, cityData);
 
       // Navigate to the app
-      router.push(`/app?repo=${parsed.owner}/${parsed.name}`);
-    } catch (err) {
+      router.push('/app');
+    } catch (err: any) {
       console.error('Error fetching repo:', err);
-      setError('Failed to connect. Please check your internet connection and try again.');
+      if (err?.name === 'AbortError') {
+        setError('Request timed out. The repository may be too large. Try a smaller repo.');
+      } else {
+        setError('Failed to connect. Please check your internet connection and try again.');
+      }
       setIsLoading(false);
     }
   }, [url, router]);

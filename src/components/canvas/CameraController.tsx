@@ -71,15 +71,15 @@ export function CameraController() {
       enableDamping
       dampingFactor={0.05}
       enableZoom
-      zoomSpeed={0.8}
+      zoomSpeed={1.2}
       enablePan
-      panSpeed={0.8}
+      panSpeed={1.0}
       enableRotate
-      rotateSpeed={0.5}
-      minDistance={5}
-      maxDistance={150}
-      minPolarAngle={0.2}
-      maxPolarAngle={Math.PI / 2 - 0.1} // Prevent going below ground
+      rotateSpeed={0.8}
+      minDistance={3}
+      maxDistance={200}
+      minPolarAngle={0.05}
+      maxPolarAngle={Math.PI - 0.05} // Full vertical freedom
       target={[0, 0, 0]}
     />
   );

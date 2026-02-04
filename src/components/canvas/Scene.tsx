@@ -117,18 +117,12 @@ function SceneContent() {
 
 // Hook to load fixture - runs outside Canvas
 function useInitializeScene() {
-  const { currentFixture, loadFixture, loadFromSessionStorage, cityData } = useVisualizationStore();
+  const { currentFixture, loadFixture, cityData } = useVisualizationStore();
 
   useEffect(() => {
     if (!cityData) {
-      // Try loading from sessionStorage first (for GitHub repos)
-      const loadedFromSession = loadFromSessionStorage();
-
-      // If no session data, load the default fixture
-      if (!loadedFromSession) {
-        console.log('[useInitializeScene] Loading fixture:', currentFixture);
-        loadFixture(currentFixture);
-      }
+      console.log('[useInitializeScene] Loading fixture:', currentFixture);
+      loadFixture(currentFixture);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 }

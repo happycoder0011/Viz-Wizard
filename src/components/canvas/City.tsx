@@ -2,12 +2,10 @@
 
 import { useRef, useMemo } from 'react';
 import * as THREE from 'three';
-import { CityData, ClusterData } from '@/types/repository';
+import { CityData } from '@/types/repository';
 import { District } from './District';
 import { Connections } from './Connections';
-import { Cluster } from './Cluster';
 import { useVisualizationStore } from '@/stores/visualizationStore';
-import { generateSatelliteClusters, generateRegionalClusters } from '@/lib/clustering';
 
 interface CityProps {
   data: CityData;
@@ -15,17 +13,12 @@ interface CityProps {
 
 export function City({ data }: CityProps) {
   const groupRef = useRef<THREE.Group>(null);
-  const { currentZoomLevel, showConnections } = useVisualizationStore();
+  const { showConnections } = useVisualizationStore();
 
-  // Generate clusters for different zoom levels
-  const satelliteClusters = useMemo(() => generateSatelliteClusters(data), [data]);
-  const regionalClusters = useMemo(() => generateRegionalClusters(data), [data]);
-
-  // Create ground grid - scale based on zoom level
+  // Create ground grid
   const gridHelper = useMemo(() => {
-    const baseSize = Math.max(data.bounds.width, data.bounds.depth) + 40;
-    const size = currentZoomLevel === 'satellite' ? baseSize * 1.5 : baseSize;
-    const divisions = Math.floor(size / (currentZoomLevel === 'satellite' ? 10 : 5));
+    const size = Math.max(data.bounds.width, data.bounds.depth) + 40;
+    const divisions = Math.floor(size / 5);
 
     return (
       <gridHelper
@@ -33,9 +26,9 @@ export function City({ data }: CityProps) {
         position={[0, 0, 0]}
       />
     );
-  }, [data.bounds, currentZoomLevel]);
+  }, [data.bounds]);
 
-  // Infinite ground plane
+  // Ground plane
   const groundPlane = useMemo(() => {
     return (
       <mesh
@@ -53,64 +46,15 @@ export function City({ data }: CityProps) {
     );
   }, []);
 
-  // Render content based on zoom level
-  const renderContent = () => {
-    switch (currentZoomLevel) {
-      case 'satellite':
-        // Show high-level module clusters only
-        return (
-          <>
-            {satelliteClusters.map((cluster) => (
-              <Cluster key={cluster.id} data={cluster} zoomLevel="satellite" />
-            ))}
-          </>
-        );
-
-      case 'regional':
-        // Show district clusters
-        return (
-          <>
-            {regionalClusters.map((cluster) => (
-              <Cluster key={cluster.id} data={cluster} zoomLevel="regional" />
-            ))}
-            {/* Show faded connections at regional level */}
-            {showConnections && <Connections roads={data.roads} opacity={0.3} />}
-          </>
-        );
-
-      case 'district':
-        // Show districts with simplified buildings
-        return (
-          <>
-            {showConnections && <Connections roads={data.roads} opacity={0.5} />}
-            {data.districts.map((district) => (
-              <District key={district.id} data={district} simplified />
-            ))}
-          </>
-        );
-
-      case 'street':
-      default:
-        // Full detail view
-        return (
-          <>
-            {showConnections && <Connections roads={data.roads} />}
-            {data.districts.map((district) => (
-              <District key={district.id} data={district} />
-            ))}
-          </>
-        );
-    }
-  };
-
   return (
     <group ref={groupRef}>
-      {/* Ground */}
       {groundPlane}
       {gridHelper}
 
-      {/* Zoom-level-specific content */}
-      {renderContent()}
+      {showConnections && <Connections roads={data.roads} />}
+      {data.districts.map((district) => (
+        <District key={district.id} data={district} />
+      ))}
     </group>
   );
 }

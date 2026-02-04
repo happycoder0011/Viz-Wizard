@@ -168,6 +168,7 @@ interface VisualizationState {
   resetCamera: () => void;
   loadFixture: (fixtureType: FixtureType) => void;
   loadFromSessionStorage: () => boolean; // Returns true if data was loaded
+  loadRepoDirectly: (repo: RepositoryData, cityData: CityData) => void;
   togglePanelMinimized: (panel: 'zoomIndicator' | 'selectedBuilding' | 'controlPanel' | 'legend') => void;
 
   // Code Editor Actions
@@ -550,6 +551,24 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => ({
       console.error('[loadFromSessionStorage] Error:', error);
       return false;
     }
+  },
+
+  loadRepoDirectly: (repo: RepositoryData, city: CityData) => {
+    set({
+      repository: repo,
+      cityData: city,
+      isLoading: false,
+      selectedBuildingId: null,
+      hoveredBuildingId: null,
+      hoveredBuilding: null,
+      cameraTarget: {
+        position: [30, 25, 30],
+        lookAt: [0, 0, 0],
+      },
+      isAnimatingCamera: true,
+    });
+    // Generate insights after render
+    setTimeout(() => get().generateCodebaseInsights(), 200);
   },
 
   // Code Editor Actions

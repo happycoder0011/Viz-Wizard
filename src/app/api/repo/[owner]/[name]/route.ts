@@ -120,55 +120,73 @@ function estimateComplexity(size: number): number {
   return Math.floor(Math.random() * 20) + 70; // 70-90
 }
 
+// Max files to process — prevents browser crashes on huge repos like VS Code
+const MAX_FILES = 500;
+
+const SUPPORTED_EXTENSIONS = new Set([
+  'ts', 'tsx', 'js', 'jsx', 'py', 'rs', 'go', 'java', 'c', 'cpp', 'h', 'hpp',
+  'rb', 'php', 'cs', 'swift', 'kt', 'scala', 'css', 'scss', 'html', 'json',
+  'yaml', 'yml', 'md', 'sql', 'sh', 'bash',
+]);
+
+const SKIP_DIRS = [
+  'node_modules/', 'vendor/', '.git/', 'dist/', 'build/', '.next/',
+  'coverage/', '__pycache__/', '.tox/', '.mypy_cache/', 'target/debug/',
+  'target/release/', '.gradle/', 'Pods/', '.idea/', '.vscode/',
+];
+
 /**
  * Transform GitHub tree to Viz-Wizard FileNodes
+ * Caps output at MAX_FILES, prioritizing core source files.
  */
-function treeToFileNodes(tree: GitHubTreeItem[]): FileNode[] {
-  const files: FileNode[] = [];
-  const supportedExtensions = new Set([
-    'ts', 'tsx', 'js', 'jsx', 'py', 'rs', 'go', 'java', 'c', 'cpp', 'h', 'hpp',
-    'rb', 'php', 'cs', 'swift', 'kt', 'scala', 'css', 'scss', 'html', 'json',
-    'yaml', 'yml', 'md', 'sql', 'sh', 'bash',
-  ]);
+function treeToFileNodes(tree: GitHubTreeItem[]): { files: FileNode[]; truncated: boolean; totalEligible: number } {
+  const candidates: { item: GitHubTreeItem; extension: string; category: FileCategory; priority: number }[] = [];
 
   for (const item of tree) {
-    // Only process files (blobs), not directories
     if (item.type !== 'blob') continue;
 
-    // Get file extension
     const parts = item.path.split('.');
     const extension = parts.length > 1 ? parts.pop()! : '';
 
-    // Skip unsupported or binary files
-    if (!supportedExtensions.has(extension.toLowerCase())) continue;
+    if (!SUPPORTED_EXTENSIONS.has(extension.toLowerCase())) continue;
+    if (SKIP_DIRS.some(dir => item.path.includes(dir))) continue;
 
-    // Skip common non-code files
-    if (
-      item.path.includes('node_modules/') ||
-      item.path.includes('vendor/') ||
-      item.path.includes('.git/') ||
-      item.path.includes('dist/') ||
-      item.path.includes('build/') ||
-      item.path.includes('.next/') ||
-      item.path.includes('coverage/')
-    ) continue;
+    const category = categorizeFile(item.path, extension);
 
+    // Priority: core=0 (highest), test=1, style=2, config=3, docs=4, legacy=5
+    const priorityMap: Record<FileCategory, number> = { core: 0, test: 1, style: 2, config: 3, docs: 4, legacy: 5 };
+    const priority = priorityMap[category] ?? 3;
+
+    candidates.push({ item, extension, category, priority });
+  }
+
+  const totalEligible = candidates.length;
+  const truncated = candidates.length > MAX_FILES;
+
+  // Sort: core files first, then by size (larger = more important)
+  candidates.sort((a, b) => {
+    if (a.priority !== b.priority) return a.priority - b.priority;
+    return (b.item.size || 0) - (a.item.size || 0);
+  });
+
+  const selected = candidates.slice(0, MAX_FILES);
+
+  const files: FileNode[] = selected.map(({ item, extension, category }) => {
     const name = item.path.split('/').pop() || item.path;
     const size = item.size || 0;
-
-    files.push({
+    return {
       id: item.sha,
       name,
       path: item.path,
       extension,
-      lineCount: Math.ceil(size / 40), // Rough estimate: ~40 chars per line
+      lineCount: Math.ceil(size / 40),
       complexity: estimateComplexity(size),
-      category: categorizeFile(item.path, extension),
+      category,
       language: getLanguage(extension),
-    });
-  }
+    };
+  });
 
-  return files;
+  return { files, truncated, totalEligible };
 }
 
 /**
@@ -302,15 +320,18 @@ export async function GET(
 
     const client = new GitHubClient({ token });
 
-    // Fetch repo info and tree in parallel
-    const [repoInfo, tree, languages] = await Promise.all([
-      client.getRepoInfo(owner, name),
-      client.getTree(owner, name),
+    // Fetch repo info first (needed for default branch)
+    const repoInfo = await client.getRepoInfo(owner, name);
+
+    // Then fetch tree and languages in parallel
+    const [tree, languages] = await Promise.all([
+      client.getTree(owner, name, repoInfo.default_branch),
       client.getLanguages(owner, name),
     ]);
 
     // Transform to Viz-Wizard format (basic analysis)
-    let files = treeToFileNodes(tree);
+    const { files: baseFiles, truncated: filesTruncated, totalEligible } = treeToFileNodes(tree);
+    let files = baseFiles;
     let connections = generateConnections(files);
     let criticalPath: CriticalPathScore[] = [];
     let analysisSource: 'github' | 'parseltongue' = 'github';
@@ -342,6 +363,8 @@ export async function GET(
         source: string;
         criticalPath: CriticalPathScore[];
         parseltongueUrl?: string;
+        filesTruncated?: boolean;
+        totalEligible?: number;
       };
     } = {
       owner: repoInfo.owner,
@@ -357,6 +380,8 @@ export async function GET(
         source: analysisSource,
         criticalPath,
         parseltongueUrl: analysisSource === 'parseltongue' ? parseltongueUrl : undefined,
+        filesTruncated,
+        totalEligible,
       },
     };
 
