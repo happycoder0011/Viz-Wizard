@@ -73,9 +73,53 @@ export function CodeEditor() {
   const [prevPosition, setPrevPosition] = useState(codeEditorPosition);
   const [chatWidth] = useState(320);
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
+  const [fileContent, setFileContent] = useState<string | null>(null);
+  const [loadingContent, setLoadingContent] = useState(false);
+  const [contentError, setContentError] = useState<string | null>(null);
 
   // Find the file data
   const file = repository?.allFiles.find(f => f.id === codeEditorFileId);
+
+  // Fetch file content from GitHub when file changes
+  useEffect(() => {
+    if (!codeEditorOpen || !file || !repository?.owner || !repository?.name) {
+      setFileContent(null);
+      return;
+    }
+
+    // If file already has content, use it
+    if (file.content) {
+      setFileContent(file.content);
+      return;
+    }
+
+    // Fetch content from GitHub
+    const fetchContent = async () => {
+      setLoadingContent(true);
+      setContentError(null);
+
+      try {
+        const response = await fetch(
+          `https://raw.githubusercontent.com/${repository.owner}/${repository.name}/${repository.defaultBranch || 'main'}/${file.path}`
+        );
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch: ${response.status}`);
+        }
+
+        const content = await response.text();
+        setFileContent(content);
+      } catch (error) {
+        console.error('Failed to fetch file content:', error);
+        setContentError(error instanceof Error ? error.message : 'Failed to load file');
+        setFileContent(null);
+      } finally {
+        setLoadingContent(false);
+      }
+    };
+
+    fetchContent();
+  }, [codeEditorOpen, file, repository]);
 
   // Handle maximize toggle
   const handleMaximize = useCallback(() => {
@@ -112,7 +156,13 @@ export function CodeEditor() {
 
   const colors = CATEGORY_COLORS[file.category];
   const language = file.language || getLanguageFromExtension(file.extension);
-  const content = file.content || `// ${file.name}\n// Path: ${file.path}\n// Lines: ${file.lineCount}\n// Complexity: ${file.complexity}%\n\n// Content not available for this mock file`;
+
+  // Determine content to display
+  const content = loadingContent
+    ? `// Loading ${file.name}...`
+    : contentError
+      ? `// Error loading ${file.name}\n// ${contentError}\n\n// Path: ${file.path}`
+      : fileContent || `// ${file.name}\n// Path: ${file.path}\n// Lines: ${file.lineCount}\n// Complexity: ${file.complexity}%\n\n// Content not available`;
 
   return (
     <AnimatePresence>
@@ -253,7 +303,37 @@ export function CodeEditor() {
             {/* Editor + Chat Split View */}
             <div className="flex-1 flex overflow-hidden">
               {/* Monaco Editor */}
-              <div className={`flex-1 overflow-hidden ${chatPanelOpen ? 'border-r border-white/10' : ''}`}>
+              <div className={`relative flex-1 overflow-hidden ${chatPanelOpen ? 'border-r border-white/10' : ''}`}>
+                {/* Loading overlay */}
+                {loadingContent && (
+                  <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#1e1e2e]/90">
+                    <div className="flex flex-col items-center gap-3">
+                      <svg className="w-8 h-8 animate-spin text-cyan-400" viewBox="0 0 24 24" fill="none">
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" opacity="0.25" />
+                        <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      </svg>
+                      <span className="text-sm text-white/60">Loading file content...</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Error state */}
+                {contentError && !loadingContent && (
+                  <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#1e1e2e]/90">
+                    <div className="flex flex-col items-center gap-3 text-center px-4">
+                      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-red-400">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="8" x2="12" y2="12" />
+                        <line x1="12" y1="16" x2="12.01" y2="16" />
+                      </svg>
+                      <div>
+                        <div className="text-sm text-white/80 mb-1">Failed to load file</div>
+                        <div className="text-xs text-white/50">{contentError}</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
               <Editor
                 height="100%"
                 language={language}

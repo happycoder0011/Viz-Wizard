@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useVisualizationStore } from '@/stores/visualizationStore';
 import { CATEGORY_COLORS } from '@/lib/mockData';
 
 export function Tooltip() {
-  const { hoveredBuilding, hoveredBuildingId } = useVisualizationStore();
+  const { hoveredBuilding, hoveredBuildingId, gitHistoryData, repository } = useVisualizationStore();
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
 
   // Track mouse position
@@ -18,6 +18,22 @@ export function Tooltip() {
     window.addEventListener('mousemove', handleMouseMove);
     return () => window.removeEventListener('mousemove', handleMouseMove);
   }, []);
+
+  // Get git history info for the hovered file
+  const gitInfo = useMemo(() => {
+    if (!hoveredBuilding || !gitHistoryData || !repository) return null;
+
+    // Find the file path from repository data
+    const file = repository.allFiles.find(f => f.id === hoveredBuilding.fileId);
+    if (!file) return null;
+
+    const velocity = gitHistoryData.velocityData[file.path];
+    const ownership = gitHistoryData.ownershipData[file.path];
+
+    if (!velocity && !ownership) return null;
+
+    return { velocity, ownership };
+  }, [hoveredBuilding, gitHistoryData, repository]);
 
   if (!hoveredBuilding || !hoveredBuildingId) return null;
 
@@ -135,6 +151,54 @@ export function Tooltip() {
               </div>
             </div>
           </div>
+
+          {/* Git History Info (when available) */}
+          {gitInfo && (
+            <div className="mt-2 pt-2 border-t border-white/10">
+              <div className="grid grid-cols-2 gap-2">
+                {gitInfo.velocity && (
+                  <div className="bg-white/5 rounded-lg p-2">
+                    <div className="text-xs text-white/50 mb-0.5">Velocity</div>
+                    <div className="flex items-center gap-1">
+                      <div
+                        className="text-sm font-medium"
+                        style={{
+                          color: gitInfo.velocity.velocityScore > 60 ? '#f97316' :
+                                 gitInfo.velocity.velocityScore > 30 ? '#eab308' : '#22c55e'
+                        }}
+                      >
+                        {gitInfo.velocity.velocityScore}
+                      </div>
+                      <span className="text-[10px] text-white/40">
+                        ({gitInfo.velocity.changeCount} changes)
+                      </span>
+                    </div>
+                  </div>
+                )}
+                {gitInfo.ownership && (
+                  <div className="bg-white/5 rounded-lg p-2">
+                    <div className="text-xs text-white/50 mb-0.5">Owner</div>
+                    <div className="text-sm font-medium text-white truncate">
+                      {gitInfo.ownership.primaryOwner}
+                    </div>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <span
+                        className="text-[9px] px-1 rounded"
+                        style={{
+                          backgroundColor: gitInfo.ownership.riskLevel === 'high' ? '#ef444420' :
+                                          gitInfo.ownership.riskLevel === 'medium' ? '#eab30820' : '#22c55e20',
+                          color: gitInfo.ownership.riskLevel === 'high' ? '#ef4444' :
+                                 gitInfo.ownership.riskLevel === 'medium' ? '#eab308' : '#22c55e'
+                        }}
+                      >
+                        Bus factor: {gitInfo.ownership.busFactor}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Hint */}
           <div className="mt-3 pt-3 border-t border-white/10 text-center">

@@ -1,11 +1,12 @@
 'use client';
 
+import { useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useVisualizationStore } from '@/stores/visualizationStore';
 import { CATEGORY_COLORS } from '@/lib/mockData';
 
 export function SelectedBuildingPanel() {
-  const { selectedBuildingId, cityData, selectBuilding, minimizedPanels, togglePanelMinimized, openCodeEditor, openFindUsages } = useVisualizationStore();
+  const { selectedBuildingId, cityData, selectBuilding, minimizedPanels, togglePanelMinimized, openCodeEditor, openFindUsages, gitHistoryData, repository } = useVisualizationStore();
   const isMinimized = minimizedPanels.selectedBuilding;
 
   // Find the selected building
@@ -19,6 +20,21 @@ export function SelectedBuildingPanel() {
       }
     }
   }
+
+  // Get git history info for the selected file
+  const gitInfo = useMemo(() => {
+    if (!selectedBuilding || !gitHistoryData || !repository) return null;
+
+    const file = repository.allFiles.find(f => f.id === selectedBuilding.fileId);
+    if (!file) return null;
+
+    const velocity = gitHistoryData.velocityData[file.path];
+    const ownership = gitHistoryData.ownershipData[file.path];
+
+    if (!velocity && !ownership) return null;
+
+    return { velocity, ownership };
+  }, [selectedBuilding, gitHistoryData, repository]);
 
   if (!selectedBuilding) return null;
 
@@ -198,6 +214,78 @@ export function SelectedBuildingPanel() {
                   </span>
                 </div>
 
+                {/* Git History Section */}
+                {gitInfo && (
+                  <div className="pt-3 border-t border-white/10">
+                    <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2">Git History</div>
+                    <div className="space-y-2">
+                      {/* Velocity */}
+                      {gitInfo.velocity && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-white/60">Change Velocity</span>
+                          <div className="flex items-center gap-2">
+                            <div className="w-16 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                              <div
+                                className="h-full rounded-full"
+                                style={{
+                                  width: `${gitInfo.velocity.velocityScore}%`,
+                                  backgroundColor: gitInfo.velocity.velocityScore > 60 ? '#f97316' :
+                                                   gitInfo.velocity.velocityScore > 30 ? '#eab308' : '#22c55e'
+                                }}
+                              />
+                            </div>
+                            <span
+                              className="text-xs font-medium"
+                              style={{
+                                color: gitInfo.velocity.velocityScore > 60 ? '#f97316' :
+                                       gitInfo.velocity.velocityScore > 30 ? '#eab308' : '#22c55e'
+                              }}
+                            >
+                              {gitInfo.velocity.velocityScore}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Ownership */}
+                      {gitInfo.ownership && (
+                        <>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-white/60">Primary Owner</span>
+                            <span className="text-xs text-white font-medium truncate max-w-[120px]">
+                              {gitInfo.ownership.primaryOwner}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-white/60">Bus Factor</span>
+                            <span
+                              className="text-xs font-medium px-1.5 py-0.5 rounded"
+                              style={{
+                                backgroundColor: gitInfo.ownership.riskLevel === 'high' ? '#ef444420' :
+                                                gitInfo.ownership.riskLevel === 'medium' ? '#eab30820' : '#22c55e20',
+                                color: gitInfo.ownership.riskLevel === 'high' ? '#ef4444' :
+                                       gitInfo.ownership.riskLevel === 'medium' ? '#eab308' : '#22c55e'
+                              }}
+                            >
+                              {gitInfo.ownership.busFactor} {gitInfo.ownership.busFactor === 1 ? 'contributor' : 'contributors'}
+                            </span>
+                          </div>
+                        </>
+                      )}
+
+                      {/* Last Changed */}
+                      {gitInfo.velocity?.lastChanged && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-white/60">Last Changed</span>
+                          <span className="text-xs text-white/80">
+                            {formatRelativeDate(gitInfo.velocity.lastChanged)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* Action buttons */}
                 <div className="flex gap-2 pt-2 border-t border-white/10">
                   <button
@@ -265,4 +353,19 @@ function getCategoryDescription(category: string): string {
     docs: 'Documentation',
   };
   return descriptions[category] || category;
+}
+
+// Format relative date
+function formatRelativeDate(dateStr: string): string {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays < 7) return `${diffDays} days ago`;
+  if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
+  if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`;
+  return `${Math.floor(diffDays / 365)} years ago`;
 }

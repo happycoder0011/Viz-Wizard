@@ -4,7 +4,16 @@ import { motion } from 'framer-motion';
 import { useVisualizationStore } from '@/stores/visualizationStore';
 
 export function Header() {
-  const { repository, cityData, criticalPathEnabled, toggleCriticalPath, showDistrictView } = useVisualizationStore();
+  const {
+    repository,
+    cityData,
+    criticalPathEnabled,
+    toggleCriticalPath,
+    showDistrictView,
+    gitHistoryData,
+    gitHistoryLoading,
+    loadGitHistory,
+  } = useVisualizationStore();
 
   const stats = repository?.stats;
   const repoName = repository ? `${repository.owner}/${repository.name}` : 'Loading...';
@@ -88,6 +97,49 @@ export function Header() {
                 <span className="w-2 h-2 rounded-full bg-viz-purple" />
                 <span>{stats.totalDirectories} dirs</span>
               </div>
+              {gitHistoryData && (
+                <div className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-green-400" />
+                  <span>{gitHistoryData.contributors.length} contributors</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Git History Button */}
+          {repository?.owner && !gitHistoryData && (
+            <button
+              onClick={() => loadGitHistory(repository.owner, repository.name)}
+              disabled={gitHistoryLoading}
+              className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-xs text-white/60 hover:text-white disabled:opacity-50"
+            >
+              {gitHistoryLoading ? (
+                <>
+                  <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" opacity="0.25" />
+                    <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                  Loading git history...
+                </>
+              ) : (
+                <>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="4" />
+                    <path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.92 7.94" />
+                  </svg>
+                  Load Git History
+                </>
+              )}
+            </button>
+          )}
+
+          {/* Git History Loaded Badge */}
+          {gitHistoryData && (
+            <div className="mt-3 flex items-center gap-2 text-[10px] text-green-400">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M20 6L9 17l-5-5" />
+              </svg>
+              Git history loaded
             </div>
           )}
         </div>
